@@ -71,12 +71,15 @@ export function mergeSuggestedQuestionnaire(current: DataQuestionnaire, suggeste
   return out;
 }
 
-export function ordered(opps: Opportunity[]): Opportunity[] {
+/** Anything the consultant can reorder and hide: opportunities, enablement, expansion. */
+export type Orderable = { id: string; order: number; hidden: boolean };
+
+export function ordered<T extends Orderable>(opps: T[]): T[] {
   return [...opps].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
 /** Moves one opportunity a step up (-1) or down (+1) and renumbers `order` as 0..n-1. */
-export function moveOpportunity(opps: Opportunity[], id: string, direction: -1 | 1): Opportunity[] {
+export function moveOpportunity<T extends Orderable>(opps: T[], id: string, direction: -1 | 1): T[] {
   const list = ordered(opps);
   const from = list.findIndex((o) => o.id === id);
   const to = from + direction;
@@ -86,7 +89,7 @@ export function moveOpportunity(opps: Opportunity[], id: string, direction: -1 |
   return list.map((o, i) => ({ ...o, order: i }));
 }
 
-export function setOpportunityHidden(opps: Opportunity[], id: string, hidden: boolean): Opportunity[] {
+export function setOpportunityHidden<T extends Orderable>(opps: T[], id: string, hidden: boolean): T[] {
   return opps.map((o) => (o.id === id ? { ...o, hidden } : o));
 }
 

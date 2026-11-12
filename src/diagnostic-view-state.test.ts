@@ -232,3 +232,12 @@ test("update queue: sync is ignored while edits are pending and adopted when idl
   q.sync(99);
   assert.equal(q.get(), 99);
 });
+
+test("move and hide also work for enablement and expansion items", () => {
+  const items = [
+    { id: "c1", title: "A", order: 0, hidden: false },
+    { id: "c2", title: "B", order: 1, hidden: false },
+  ];
+  assert.deepEqual(moveOpportunity(items, "c2", -1).map((x) => [x.id, x.order, x.title]), [["c2", 0, "B"], ["c1", 1, "A"]]);
+  assert.equal(setOpportunityHidden(items, "c1", true)[0]!.hidden, true);
+});

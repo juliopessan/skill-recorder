@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { Engagement, Opportunity } from "../common/diagnostic";
+import type { Engagement, Initiatives, Opportunity } from "../common/diagnostic";
 import { DEFAULT_THESIS_TEXT } from "../common/diagnostic-config";
 import type { DiagnosticBundle, SessionSummary } from "../common/ipc";
 import {
@@ -13,6 +13,7 @@ import {
 } from "./diagnostic-view-state";
 import { EngagementList } from "./diagnostics/EngagementList";
 import { EngagementSetup } from "./diagnostics/EngagementSetup";
+import { InitiativesPanel } from "./diagnostics/InitiativesPanel";
 import { OpportunityList } from "./diagnostics/OpportunityList";
 import { ProcessesSection } from "./diagnostics/ProcessPanel";
 import { QuestionnaireForm } from "./diagnostics/QuestionnaireForm";
@@ -35,6 +36,7 @@ interface Queues {
   id: string;
   engagement: UpdateQueue<Engagement>;
   opportunities: UpdateQueue<Opportunity[]>;
+  initiatives: UpdateQueue<Initiatives>;
 }
 
 export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean) => ReactNode }) {
@@ -78,6 +80,7 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
       if (queues.current?.id === id) {
         queues.current.engagement.sync(res.engagement);
         queues.current.opportunities.sync(res.opportunities);
+        queues.current.initiatives.sync(res.initiatives);
       } else {
         queues.current = {
           id,
@@ -87,6 +90,10 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
           }),
           opportunities: createUpdateQueue(res.opportunities, async (value) => {
             const saved = await safeCall(() => window.skillRecorder.saveDiagnosticOpportunities(id, value));
+            return isError(saved) ? saved.error : null;
+          }),
+          initiatives: createUpdateQueue(res.initiatives, async (value) => {
+            const saved = await safeCall(() => window.skillRecorder.saveDiagnosticInitiatives(id, value));
             return isError(saved) ? saved.error : null;
           }),
         };
@@ -165,6 +172,15 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
       const q = queues.current;
       if (!q) return null;
       return afterSave(q.id, await q.opportunities.enqueue(update));
+    },
+    [afterSave],
+  );
+
+  const saveInitiatives = useCallback(
+    async (update: (prev: Initiatives) => Initiatives): Promise<string | null> => {
+      const q = queues.current;
+      if (!q) return null;
+      return afterSave(q.id, await q.initiatives.enqueue(update));
     },
     [afterSave],
   );
@@ -288,6 +304,12 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
             <header className="diag-title">
               <span className="eyebrow">Diagnóstico de prontidão para IA</span>
               <h1 className="diag-h1">{e.clientName}</h1>
+              <p className="diag-maturity">
+                <strong>Maturidade em IA: Nível {bundle.report.maturity.level} de 5 — {bundle.report.maturity.name}</strong>
+                {bundle.report.maturity.nextLevel
+                  ? ` · faltam ${bundle.report.maturity.nextLevel.pointsNeeded} pontos para o nível ${bundle.report.maturity.nextLevel.level}; dimensão mais fraca: ${bundle.report.maturity.weakest}`
+                  : " · nível máximo"}
+              </p>
               <p className="diag-next"><strong>Próximo passo:</strong> {STEP_LABEL[step]}</p>
             </header>
             <EngagementSetup engagement={e} disabled={busy} onChange={(u) => void persist(u)} />
@@ -321,6 +343,11 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
               onSave={(u) => void saveOpportunities(u)}
               onGenerate={(fb) => void generateOpportunities(fb)}
               onCancel={cancel}
+            />
+            <InitiativesPanel
+              initiatives={bundle.initiatives}
+              disabled={busy}
+              onSave={(u) => void saveInitiatives(u)}
             />
             <ReportPanel
               report={bundle.report}

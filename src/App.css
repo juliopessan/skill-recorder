@@ -3709,6 +3709,19 @@ button:focus-visible,
   align-self: flex-start;
 }
 
+.diag-maturity {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-dim, var(--text));
+}
+
+.diag-subhead {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .diag-section {
   display: flex;
   flex-direction: column;
