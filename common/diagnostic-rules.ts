@@ -53,8 +53,22 @@ const AXIS_NAME: Record<QuestionnaireAxis, string> = {
 };
 const AXES = Object.keys(AXIS_NAME) as QuestionnaireAxis[];
 
+/**
+ * Visible opportunities whose process has no map, or that reference a step id missing from the
+ * process's current map (regenerating a map can change step ids). Their savings would be understated.
+ */
+export function staleOpportunities(opps: Opportunity[], maps: Record<string, ProcessMap>): Opportunity[] {
+  return opps.filter((o) => {
+    if (o.hidden) return false;
+    const map = maps[o.processId];
+    if (!map) return true;
+    const ids = new Set(map.steps.map((s) => s.id));
+    return o.stepIds.some((id) => !ids.has(id));
+  });
+}
+
 /** Reasons (pt-BR) why the report must stay a draft. Empty when every number is trustworthy. */
-export function draftReasons(e: Engagement, maps: Record<string, ProcessMap>): string[] {
+export function draftReasons(e: Engagement, maps: Record<string, ProcessMap>, opps: Opportunity[] = []): string[] {
   const reasons: string[] = [];
   const roles = new Map(e.roles.map((r) => [r.id, r]));
   for (const p of e.processes) {
@@ -74,6 +88,12 @@ export function draftReasons(e: Engagement, maps: Record<string, ProcessMap>): s
     const a = e.dataQuestionnaire[axis];
     if (!a) reasons.push(`O eixo de dados "${AXIS_NAME[axis]}" do questionário não foi respondido.`);
     else if (a.source !== "confirmed") reasons.push(`A resposta do eixo de dados "${AXIS_NAME[axis]}" não foi confirmada.`);
+  }
+  const staleProcesses = new Set(staleOpportunities(opps, maps).map((o) => o.processId));
+  for (const p of e.processes) {
+    if (staleProcesses.has(p.id)) {
+      reasons.push(`Há oportunidades desatualizadas após regenerar o mapa de "${p.name}" — gere as oportunidades de novo.`);
+    }
   }
   return reasons;
 }

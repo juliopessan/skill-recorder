@@ -8,6 +8,8 @@ import {
   OpportunitiesSubmissionSchema,
   OpportunitySchema,
   QuestionnaireAnswerSchema,
+  RoleSchema,
+  SourcedNumberSchema,
 } from "./diagnostic";
 
 test("EngagementSchema defaults currency to BRL", () => {
@@ -89,4 +91,13 @@ test("OpportunitiesSubmissionSchema defaults enablement and expansion to []", ()
   const s = OpportunitiesSubmissionSchema.parse({ opportunities: [] });
   assert.deepEqual(s.enablement, []);
   assert.deepEqual(s.expansion, []);
+});
+
+test("SourcedNumber and Role reject negative and non-finite numbers", () => {
+  for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(SourcedNumberSchema.safeParse({ value, source: "confirmed" }).success, false, String(value));
+    assert.equal(RoleSchema.safeParse({ id: "r", name: "R", hourlyCost: value }).success, false, String(value));
+  }
+  assert.equal(SourcedNumberSchema.safeParse({ value: 0, source: "confirmed" }).success, true);
+  assert.equal(RoleSchema.safeParse({ id: "r", name: "R", hourlyCost: 12.5 }).success, true);
 });

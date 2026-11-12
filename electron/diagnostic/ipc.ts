@@ -16,7 +16,7 @@ import { buildReportModel, renderReportHtml } from "../../common/diagnostic-repo
 import { suggestQuestionnaire, validateOpportunities } from "../../common/diagnostic-rules";
 import { IPC } from "../../common/ipc";
 import type { DiagnosticAgent } from "./agent";
-import { exportFileName, recomputeStale, safely } from "./ipc-helpers";
+import { deleteBlockedError, exportFileName, recomputeStale, safely } from "./ipc-helpers";
 import { exportReport } from "./export";
 import {
   deleteEngagement,
@@ -25,7 +25,6 @@ import {
   loadInitiatives,
   loadOpportunities,
   loadProcessMap,
-  refreshStale,
   saveEngagement,
   saveInitiatives,
   saveOpportunities,
@@ -97,6 +96,8 @@ export function registerDiagnosticIpc(
 
   ipcMain.handle(IPC.diagnosticDelete, (_e, id: string) =>
     safely(() => {
+      const blocked = deleteBlockedError(agent.isRunning());
+      if (blocked) return blocked;
       deleteEngagement(id);
       return { ok: true as const };
     }),
@@ -133,7 +134,8 @@ export function registerDiagnosticIpc(
   ipcMain.handle(IPC.diagnosticExport, (event, engagementId: string, rawFormat: unknown) =>
     safely(async () => {
       const format = FormatSchema.parse(rawFormat);
-      const engagement = refreshStale(requireEngagement(engagementId));
+      const { engagement, changed } = recomputeStale(requireEngagement(engagementId));
+      if (changed) saveEngagement(engagement);
       const maps = loadMaps(engagement);
       const model = buildReportModel(engagement, maps, loadOpportunities(engagementId), Date.now(), loadInitiatives(engagementId));
       const html = renderReportHtml(model, engagement, maps);

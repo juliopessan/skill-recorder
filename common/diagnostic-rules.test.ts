@@ -7,6 +7,7 @@ import {
   isQuickWin,
   prerequisitePath,
   squadByWave,
+  staleOpportunities,
   suggestQuestionnaire,
   validateOpportunities,
   validateSquadSize,
@@ -202,4 +203,23 @@ test("validateSquadSize rejects a wave needing 6 distinct roles and an opportuni
   const one = validateSquadSize([opp("A", { suggestedSquad: squad(["a", "b", "c", "d", "e", "f"]) })]);
   assert.equal(one.ok, false);
   if (!one.ok) assert.match(one.error, /"A"/);
+});
+
+test("staleOpportunities flags a missing stepId and a missing map; fresh and hidden ones are ignored", () => {
+  const maps = { p1: mkMap([step("s1"), step("s2")]) };
+  const fresh = opp("fresh", { stepIds: ["s1", "s2"] });
+  const missingStep = opp("gone", { stepIds: ["s1", "s9"] });
+  const noMap = opp("nomap", { processId: "p2", stepIds: ["x"] });
+  const hiddenStale = opp("hid", { stepIds: ["s9"], hidden: true });
+  assert.deepEqual(staleOpportunities([fresh, missingStep, noMap, hiddenStale], maps).map((o) => o.id), ["gone", "nomap"]);
+  assert.deepEqual(staleOpportunities([fresh], maps), []);
+});
+
+test("draftReasons adds one pt-BR reason per process with stale opportunities", () => {
+  const maps = { p1: mkMap([step("s1")]) };
+  const reasons = draftReasons(engagement(), maps, [opp("a", { stepIds: ["s9"] }), opp("b", { stepIds: ["s8"] })]);
+  const stale = reasons.filter((r) => r.startsWith("Há oportunidades desatualizadas"));
+  assert.equal(stale.length, 1);
+  assert.ok(stale[0]!.includes("gere as oportunidades de novo"));
+  assert.deepEqual(draftReasons(engagement(), maps, [opp("a", { stepIds: ["s1"] })]), []);
 });

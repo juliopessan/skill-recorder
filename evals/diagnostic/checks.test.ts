@@ -146,6 +146,26 @@ test("opps: currency in any agent text fails", () => {
   assert.equal(findCurrency(["sem moeda", "4 semanas"]), undefined);
 });
 
+test("currency regex flags amounts but not the adjective 'reais'", () => {
+  for (const t of ["R$ 1.000", "1.000 reais", "2 mil reais", "BRL"]) assert.equal(findCurrency([t]), t, t);
+  for (const t of ["custos reais", "dados reais", "R$ sem valor"]) assert.equal(findCurrency([t]), undefined, t);
+});
+
+test("opps: an empty submission fails exactly the at-least-one check when data score is not low", () => {
+  const empty = { ...goodOpps, opportunities: [] };
+  assert.deepEqual(failingO(checkOpportunities(empty, { ...oppExpect, lowDataScore: false })), ["opps: at least one opportunity"]);
+});
+
+test("opps: a prerequisite pointing at an unknown id does not satisfy wave 3", () => {
+  const dangling = { ...goodOpps, opportunities: [opp("o1", 1, []), opp("o3", 3, ["ghost"])] };
+  assert.deepEqual(failingO(checkOpportunities(dangling, oppExpect)), ["opps: wave-3 has a lower-wave prerequisite"]);
+});
+
+test("map: a map with zero steps fails the count, apps and keyword checks without throwing", () => {
+  const r = checkMap({ steps: [], variants: [], confidence: "low" }, sessions, { ...mapExpect, expectVariants: false });
+  assert.deepEqual(failing(r), ["map: step count in range", "map: key apps present", "map: step titles cover required keywords"]);
+});
+
 test("opps: squad limits (per opportunity and per wave) fail", () => {
   const six = ["a", "b", "c", "d", "e", "f"];
   const big = { ...goodOpps, opportunities: [opp("o1", 1, [], six)] };

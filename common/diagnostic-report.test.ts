@@ -290,3 +290,16 @@ test("report without initiatives renders empty states and stays deterministic", 
   assert.ok(!/NaN|undefined/.test(a.replace(/<style>[\s\S]*?<\/style>/, "")));
   assert.equal(fullHtml(load()), fullHtml(load()));
 });
+
+test("stale opportunities after a map regeneration make the report a draft with a banner reason", () => {
+  const f = load();
+  const [first] = f.opportunities;
+  f.opportunities[0] = { ...first!, stepIds: [...first!.stepIds, "step-that-no-longer-exists"] };
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW);
+  assert.equal(m.draft, true);
+  const reason = m.draftReasons.find((r) => r.startsWith("Há oportunidades desatualizadas"));
+  assert.ok(reason);
+  const html = renderReportHtml(m, f.engagement, f.maps);
+  assert.ok(html.includes("Rascunho — premissas não confirmadas"));
+  assert.ok(html.includes(escapeHtml(reason!)));
+});

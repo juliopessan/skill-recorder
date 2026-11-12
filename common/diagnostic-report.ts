@@ -222,7 +222,7 @@ export function buildReportModel(
   });
 
   const monthlyCost = money2(processes.reduce((a, p) => a + p.monthlyCost, 0));
-  const reasons = draftReasons(e, maps);
+  const reasons = draftReasons(e, maps, opps);
   const roadmap = ([1, 2, 3] as const).map((wave) => ({ wave, items: items.filter((o) => o.wave === wave) }));
 
   const roleMap = new Map<string, ReportSquadRole>();
@@ -323,6 +323,7 @@ function renderCover({ m, e, date }: Ctx): string {
     <p class="cover-next">${esc(maturityNext(m))}</p>
   </div>
   <p class="tagline">Do what matters</p>
+  <div class="cover-footer" aria-hidden="true">avanade.com</div>
 </section>`;
 }
 

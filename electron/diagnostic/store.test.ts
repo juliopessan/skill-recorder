@@ -188,3 +188,12 @@ test("initiatives: missing file is empty; round-trip is atomic", async () => {
     assert.equal(readdirSync(path.join(eng, "eng1")).some((f) => f.endsWith(".tmp")), false);
   });
 });
+
+test("a failed atomic write removes its .tmp file and rethrows", async () => {
+  await withRoots(({ eng }) => {
+    const target = path.join(eng, "eng1", "engagement.json");
+    mkdirSync(path.join(target, "blocker"), { recursive: true }); // rename onto a non-empty directory fails
+    assert.throws(() => saveEngagement(engagement()));
+    assert.equal(existsSync(`${target}.tmp`), false);
+  });
+});

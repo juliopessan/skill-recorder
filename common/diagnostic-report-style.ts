@@ -35,9 +35,9 @@ h2, h3, h4 { page-break-after:avoid; break-after:avoid; }
 .lead { page-break-inside:avoid; break-inside:avoid; page-break-after:avoid; break-after:avoid; font-size:11pt; color:var(--muted); margin-bottom:14px; }
 
 /* Cover */
-.cover { background:var(--master); color:#fff; min-height:250mm; padding:22mm 16mm 18mm; display:flex; flex-direction:column; justify-content:space-between; page-break-after:always; break-after:page; }
+.cover { background:var(--master); color:#fff; min-height:262mm; padding:22mm 16mm 18mm; position:relative; z-index:1; display:flex; flex-direction:column; justify-content:space-between; page-break-after:always; break-after:page; }
 .cover h1 { color:#fff; font-size:38pt; margin-top:10px; }
-.cover .eyebrow { color:#fff; opacity:.9; }
+.cover .eyebrow { color:#fff; font-size:10pt; font-weight:600; }
 .cover-date { font-size:12pt; margin:0; }
 .cover-level { font-size:24pt; font-weight:300; margin:6px 0 12px; }
 .cover-next { font-size:11pt; max-width:140mm; }
@@ -49,7 +49,10 @@ h2, h3, h4 { page-break-after:avoid; break-after:avoid; }
 .tagline { font-weight:700; font-size:16pt; margin:0; }
 
 /* Footer on every printed page */
-.page-footer { position:fixed; bottom:0; right:0; font-family:'Segoe UI', 'Segoe UI Variable', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif; font-weight:600; font-size:9pt; color:var(--grey-3); }
+.page-footer { position:fixed; bottom:0; right:0; font-family:'Segoe UI', 'Segoe UI Variable', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif; font-weight:600; font-size:9pt; color:var(--grey-3); z-index:0; }
+/* The fixed footer repeats on every page; on the cover (page 1) the gradient paints above it and this
+   white copy takes its place, so only the cover shows white text and the other pages keep the grey one. */
+.cover-footer { position:absolute; right:6mm; bottom:5mm; font-weight:600; font-size:9pt; color:#fff; }
 
 .banner { border:1px solid var(--semi); background:${COLORS.semiTint}; border-left:5px solid var(--semi); padding:10px 14px; margin:14px 0; page-break-inside:avoid; break-inside:avoid; }
 .banner strong { display:block; font-size:11.5pt; }

@@ -51,7 +51,8 @@ export function norm(s: string): string {
 
 const includesNorm = (haystack: string, needle: string): boolean => norm(haystack).includes(norm(needle));
 
-export const CURRENCY_RE = /R\$|\bBRL\b|\breais\b/i;
+/** Money in agent text: "R$ 10", "BRL", "300 reais", "2 mil reais". Plain "custos reais" is not money. */
+export const CURRENCY_RE = /R\$\s*\d|\bBRL\b|\d[\d.,]*\s*(mil\s+)?reais\b/i;
 
 const check = (name: string, pass: boolean, detail?: string): CheckResult => ({
   name,
@@ -132,6 +133,8 @@ export function checkOpportunities(sub: OpportunitiesSubmission, expect: OppExpe
   const out: CheckResult[] = [];
   const opps = sub.opportunities;
   const byId = new Map(opps.map((o) => [o.id, o]));
+
+  out.push(check("opps: at least one opportunity", opps.length >= 1, "the agent submitted no opportunities"));
 
   const w3Bad = opps
     .filter((o) => o.wave === 3)

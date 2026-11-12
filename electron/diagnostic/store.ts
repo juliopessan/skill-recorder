@@ -45,8 +45,13 @@ function engagementDir(id: string): string {
 function writeJsonAtomic(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify(value, null, 2));
-  renameSync(tmp, file);
+  try {
+    writeFileSync(tmp, JSON.stringify(value, null, 2));
+    renameSync(tmp, file);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
 }
 
 /** Read + validate. Missing file → null; unparsable or schema-invalid → throws `corrupt()`. */

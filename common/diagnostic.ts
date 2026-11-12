@@ -8,7 +8,7 @@ export const Source = z.enum(["measured", "ai-suggested", "confirmed"]);
 export type Source = z.infer<typeof Source>;
 
 export const SourcedNumberSchema = z.object({
-  value: z.number(),
+  value: z.number().finite().nonnegative(),
   source: Source,
 });
 export type SourcedNumber = z.infer<typeof SourcedNumberSchema>;
@@ -17,7 +17,7 @@ export const RoleSchema = z.object({
   id: z.string(),
   name: z.string(),
   /** Fully-loaded cost per hour, in the engagement currency. */
-  hourlyCost: z.number(),
+  hourlyCost: z.number().finite().nonnegative(),
 });
 export type Role = z.infer<typeof RoleSchema>;
 

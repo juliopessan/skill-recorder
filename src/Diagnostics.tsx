@@ -237,8 +237,16 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
     setGeneration({ running, progress: null, failure: null });
     let failure: GenerationState["failure"] = null;
     try {
-      // Let any pending edit reach the store before the agent reads it.
-      await queues.current?.engagement.enqueue((prev) => prev);
+      // Let any pending edit reach the store before the agent reads it, and drain the opportunity and
+      // initiative queues so loadBundle below can re-sync them (a queue with saves in flight ignores sync).
+      const q = queues.current;
+      if (q) {
+        await Promise.all([
+          q.engagement.enqueue((prev) => prev),
+          q.opportunities.enqueue((prev) => prev),
+          q.initiatives.enqueue((prev) => prev),
+        ]);
+      }
       const res = await safeCall(() => call(id) as Promise<{ error: string } | unknown>);
       if (isError(res)) failure = { scope, message: res.error, retry };
       if (alive.current) await loadBundle(id);
@@ -339,6 +347,7 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
               hasMaps={hasMaps}
               generation={generation}
               disabled={busy}
+              maps={bundle.maps}
               savingsAreEstimates={bundle.report.savingsAreEstimates}
               onSave={(u) => void saveOpportunities(u)}
               onGenerate={(fb) => void generateOpportunities(fb)}

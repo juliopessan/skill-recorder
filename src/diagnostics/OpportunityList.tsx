@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
 
-import type { Opportunity } from "../../common/diagnostic";
+import type { Opportunity, ProcessMap } from "../../common/diagnostic";
 import { formatCurrency, type ReportOpportunity } from "../../common/diagnostic-report";
+import { staleOpportunities } from "../../common/diagnostic-rules";
 import { confirmField, moveOpportunity, ordered, setOpportunityHidden } from "../diagnostic-view-state";
 import { GenerateControls, Section, SourceBadge, type GenerationState } from "./shared";
 
@@ -16,6 +17,7 @@ export function OpportunityList({
   currency,
   processNames,
   hasMaps,
+  maps,
   generation,
   disabled,
   savingsAreEstimates,
@@ -31,6 +33,8 @@ export function OpportunityList({
   /** Process id to display name, so hidden opportunities (absent from the report) still read well. */
   processNames: Record<string, string>;
   hasMaps: boolean;
+  /** Current process maps, to detect opportunities pointing at steps that no longer exist. */
+  maps: Record<string, ProcessMap>;
   generation: GenerationState;
   disabled: boolean;
   savingsAreEstimates: boolean;
@@ -45,6 +49,7 @@ export function OpportunityList({
   const rows = new Map(report.map((r) => [r.id, r]));
   const titles = new Map(opportunities.map((o) => [o.id, o.title]));
   const anyRunning = generation.running !== null;
+  const staleIds = new Set(staleOpportunities(opportunities, maps).map((o) => o.id));
 
   return (
     <Section
@@ -55,6 +60,11 @@ export function OpportunityList({
         <p className="diag-empty">Nenhuma oportunidade ainda.</p>
       ) : (
         <>
+          {staleIds.size > 0 && (
+            <p className="diag-warn" role="alert">
+              Há oportunidades desatualizadas após regenerar um mapa de processo: suas economias podem estar subestimadas. Gere as oportunidades de novo.
+            </p>
+          )}
           {savingsAreEstimates && (
             <p className="diag-hint">As economias abaixo são estimativas sugeridas pela IA, limitadas pelo teto de cada onda, até serem confirmadas.</p>
           )}
@@ -96,6 +106,9 @@ export function OpportunityList({
                       </button>
                     </span>
                   </div>
+                  {staleIds.has(o.id) && (
+                    <p className="diag-warn">Desatualizada: o mapa do processo mudou e esta oportunidade aponta para passos que não existem mais. Gere as oportunidades de novo.</p>
+                  )}
                   <h3 className="diag-opp-title">{o.title}</h3>
                   <p className="diag-opp-rationale">{o.rationale}</p>
                   <dl className="diag-facts">
@@ -172,7 +185,7 @@ export function OpportunityList({
       {confirming ? (
         <div className="diag-error" role="alertdialog" aria-label="Confirmar nova geração de oportunidades">
           <span>
-            Gerar de novo substitui as oportunidades atuais: o que você ocultou e a ordem escolhida serão perdidos. Continuar?
+            Gerar de novo substitui as oportunidades e também as listas de capacitação e novas frentes: o que você ocultou ou reordenou em qualquer uma delas será perdido. Continuar?
           </span>
           <span className="diag-inline-confirm">
             <button type="button" className="linky" onClick={() => setConfirming(false)}>Cancelar</button>

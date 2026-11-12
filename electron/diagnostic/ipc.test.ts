@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Engagement } from "../../common/diagnostic";
-import { exportFileName, recomputeStale, safely } from "./ipc-helpers";
+import { deleteBlockedError, exportFileName, recomputeStale, safely } from "./ipc-helpers";
 
 const base = (stale: boolean[]): Engagement =>
   ({
@@ -35,4 +35,9 @@ test("safely converts throws and rejections into { error }", async () => {
   assert.deepEqual(await safely(() => { throw new Error("falhou"); }), { error: "falhou" });
   assert.deepEqual(await safely(async () => { throw new Error("async"); }), { error: "async" });
   assert.equal(await safely(() => 7), 7);
+});
+
+test("deleteBlockedError blocks only while a generation runs", () => {
+  assert.equal(deleteBlockedError(false), null);
+  assert.match(deleteBlockedError(true)!.error, /Cancele a geração primeiro/);
 });

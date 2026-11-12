@@ -117,6 +117,11 @@ export class DiagnosticAgent {
     });
   }
 
+  /** True while any generation is in flight, for any engagement. */
+  isRunning(): boolean {
+    return this.running;
+  }
+
   /** Abort an in-flight turn. */
   cancel(): void {
     this.cancelled = true;

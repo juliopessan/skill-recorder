@@ -45,3 +45,11 @@ export function exportFileName(clientName: string, format: "html" | "pdf"): stri
       .replace(/-+$/g, "") || "cliente";
   return `diagnostico-${slug}.${format}`;
 }
+
+export const DELETE_BLOCKED_MESSAGE =
+  "Não é possível excluir enquanto uma geração está em andamento. Cancele a geração primeiro.";
+
+/** `{ error }` when a generation is running (deleting would race the agent's writes), otherwise null. */
+export function deleteBlockedError(generationRunning: boolean): { error: string } | null {
+  return generationRunning ? { error: DELETE_BLOCKED_MESSAGE } : null;
+}

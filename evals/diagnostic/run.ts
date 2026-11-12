@@ -12,7 +12,7 @@
 //
 // Needs a signed-in GitHub Copilot CLI; fails fast with a clear message otherwise.
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -49,15 +49,26 @@ interface ScenarioResult {
   durationMs: number;
   checks: CheckResult[];
   judge?: DiagnosticJudgeResult;
+  /** Set when the judge call itself failed, so a missing score is not mistaken for a skipped judge. */
+  judgeError?: string;
 }
 
 const bar = "─".repeat(64);
 
-async function main(): Promise<void> {
+/** Creates the temp work dir, runs, and removes the dir afterwards (unless --keep) on every exit path. */
+async function main(): Promise<number> {
   const flags = parseFlags(process.argv.slice(2));
   if (flags.model) process.env.SKILL_RECORDER_MODEL = flags.model;
 
   const base = mkdtempSync(path.join(os.tmpdir(), "sr-diag-evals-"));
+  try {
+    return await runScenarios(flags, base);
+  } finally {
+    if (!flags.keep) rmSync(base, { recursive: true, force: true });
+  }
+}
+
+async function runScenarios(flags: Flags, base: string): Promise<number> {
   const sessionsRoot = path.join(base, "sessions");
   process.env.SKILL_RECORDER_SESSIONS_DIR = sessionsRoot;
   process.env.SKILL_RECORDER_ENGAGEMENTS_DIR = path.join(base, "engagements");
@@ -65,7 +76,7 @@ async function main(): Promise<void> {
   const selected = diagnosticScenarios.filter((s) => !flags.only || flags.only.has(s.id));
   if (selected.length === 0) {
     console.error("No scenarios matched", flags.only ? [...flags.only] : "");
-    process.exit(2);
+    return 2;
   }
 
   console.error(`\nSkill Recorder — diagnostic evals`);
@@ -112,7 +123,8 @@ async function main(): Promise<void> {
         try {
           res.judge = await judgeDiagnostic(scenario, map, opps, enablement, expansion, flags.model);
         } catch (err) {
-          console.error(`   judge failed: ${err instanceof Error ? err.message : String(err)}`);
+          res.judgeError = err instanceof Error ? err.message : String(err);
+          console.error(`   judge failed: ${res.judgeError}`);
         }
       }
     } catch (err) {
@@ -130,7 +142,7 @@ async function main(): Promise<void> {
   if (signedOut) {
     console.error(`\n${bar}\nCopilot não autenticado: entre no GitHub Copilot (CLI) neste computador e rode "npm run eval:diagnostic" novamente.`);
     console.error("Nenhum resultado foi gravado.\n");
-    process.exit(2);
+    return 2;
   }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -142,14 +154,14 @@ async function main(): Promise<void> {
   for (const r of results) {
     const passed = r.checks.filter((c) => c.pass).length;
     const status = r.error ? "ERROR" : r.ok ? "PASS " : "FAIL ";
-    const j = r.judge ? `  judge ${r.judge.mean.toFixed(1)}/5` : "";
+    const j = r.judge ? `  judge ${r.judge.mean.toFixed(1)}/5` : r.judgeError ? "  judge FAILED" : "";
     console.error(`  ${status}  ${passed}/${r.checks.length} checks${j}  ${r.id}${r.error ? `  (${r.error})` : ""}`);
   }
   const ok = results.filter((r) => r.ok).length;
   console.error(`\n  ${ok}/${results.length} scenarios passed`);
   if (flags.keep) console.error(`  artifacts: ${base}`);
   console.error(`  results:   ${path.relative(process.cwd(), outFile)}\n`);
-  process.exit(ok === results.length ? 0 : 1);
+  return ok === results.length ? 0 : 1;
 }
 
 function printScenario(r: ScenarioResult): void {
@@ -164,7 +176,10 @@ function printScenario(r: ScenarioResult): void {
   }
 }
 
-main().catch((err) => {
-  console.error("Harness crashed:", err);
-  process.exit(3);
-});
+main().then(
+  (code) => process.exit(code),
+  (err) => {
+    console.error("Harness crashed:", err);
+    process.exit(3);
+  },
+);
