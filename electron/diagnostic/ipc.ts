@@ -62,7 +62,7 @@ export function registerDiagnosticIpc(
       const maps = loadMaps(engagement);
       const opportunities = loadOpportunities(engagement.id);
       const initiatives = loadInitiatives(engagement.id);
-      const report = buildReportModel(engagement, maps, opportunities, Date.now());
+      const report = buildReportModel(engagement, maps, opportunities, Date.now(), initiatives);
       return { engagement, maps, opportunities, initiatives, report };
     }),
   );
@@ -135,7 +135,7 @@ export function registerDiagnosticIpc(
       const format = FormatSchema.parse(rawFormat);
       const engagement = refreshStale(requireEngagement(engagementId));
       const maps = loadMaps(engagement);
-      const model = buildReportModel(engagement, maps, loadOpportunities(engagementId), Date.now());
+      const model = buildReportModel(engagement, maps, loadOpportunities(engagementId), Date.now(), loadInitiatives(engagementId));
       const html = renderReportHtml(model, engagement, maps);
       const opts = {
         title: "Exportar diagnóstico",

@@ -1,9 +1,10 @@
 // Report model + self-contained HTML renderer for the AI Readiness Diagnostic.
 // Pure: no Electron / Node-only imports (also bundled for the renderer).
-import type { Engagement, Opportunity, Process, ProcessMap, ProcessMapStep, QuestionnaireAxis, Role, Source } from "./diagnostic";
-import { DEFAULT_THESIS_TEXT, DIAGNOSTIC_CONFIG, DIAGNOSTIC_CONFIG_VERSION } from "./diagnostic-config";
+import type { Enablement, Engagement, Expansion, Initiatives, Opportunity, Process, ProcessMap, ProcessMapStep, QuestionnaireAxis, Role, Source } from "./diagnostic";
+import { DEFAULT_THESIS_TEXT, DIAGNOSTIC_CONFIG, DIAGNOSTIC_CONFIG_VERSION, MATURITY_LEVELS, MAX_SQUAD_SIZE } from "./diagnostic-config";
 import {
   aggregateSavings,
+  aiMaturity,
   aiReadinessScore,
   dataScore,
   observedStructuredRatio,
@@ -12,8 +13,10 @@ import {
   overallProcessScore,
   processMonthlyCost,
   processScore,
+  weakestDimension,
+  type AiMaturity,
 } from "./diagnostic-math";
-import { draftReasons, isQuickWin, prerequisitePath } from "./diagnostic-rules";
+import { draftReasons, isQuickWin, prerequisitePath, squadByWave } from "./diagnostic-rules";
 import { REPORT_CSS } from "./diagnostic-report-style";
 import {
   AXIS_LABELS,
@@ -63,6 +66,18 @@ export interface ReportKpi {
   direction: string;
 }
 
+export interface ReportMaturity extends AiMaturity {
+  /** The dimension holding AI readiness back (ties → "dados"). */
+  weakest: "processos" | "dados";
+}
+
+export interface ReportWaveSquad {
+  wave: 1 | 2 | 3;
+  roles: string[];
+  count: number;
+  max: number;
+}
+
 export interface DiagnosticReport {
   generatedAt: number;
   configVersion: number;
@@ -70,6 +85,7 @@ export interface DiagnosticReport {
   draftReasons: string[];
   thesis: string;
   scores: { process: number; data: number; ai: number };
+  maturity: ReportMaturity;
   observedStructuredRatio: number;
   totals: { monthlyCost: number; monthlySavings: number };
   /** True when any visible opportunity's savings percentage is not confirmed. */
@@ -79,6 +95,12 @@ export interface DiagnosticReport {
   topRecommendations: ReportOpportunity[];
   roadmap: { wave: 1 | 2 | 3; items: ReportOpportunity[] }[];
   squad: { roles: ReportSquadRole[]; weeksByWave: { wave: 1 | 2 | 3; weeks: number }[]; totalWeeks: number };
+  /** Distinct roles per wave among visible opportunities, against the squad cap. */
+  squadByWave: ReportWaveSquad[];
+  /** Visible enablement items, by order. Never part of money totals. */
+  enablement: Enablement[];
+  /** Visible new fronts, by order. Never part of money totals. */
+  expansion: Expansion[];
   kpis: ReportKpi[];
   assumptions: { label: string; value: string; source: Source | "consultant" }[];
 }
@@ -152,6 +174,7 @@ export function buildReportModel(
   maps: Record<string, ProcessMap>,
   opps: Opportunity[],
   now: number,
+  initiatives: Initiatives = { enablement: [], expansion: [] },
 ): DiagnosticReport {
   const roles = new Map<string, Role>(e.roles.map((r) => [r.id, r]));
   const procs = new Map<string, Process>(e.processes.map((p) => [p.id, p]));
@@ -174,6 +197,9 @@ export function buildReportModel(
   const scoreP = overallProcessScore(allMaps);
   const scoreD = dataScore(e.dataQuestionnaire, allMaps);
   const scores = { process: scoreP, data: scoreD, ai: aiReadinessScore(scoreP, scoreD) };
+  const maturity: ReportMaturity = { ...aiMaturity(scores.ai), weakest: weakestDimension(scoreP, scoreD) };
+  const byOrder = <T extends { hidden: boolean; order: number; id: string }>(xs: T[]): T[] =>
+    xs.filter((x) => !x.hidden).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
   const ratio = observedStructuredRatio(allMaps);
 
   const visible = opps
@@ -221,6 +247,7 @@ export function buildReportModel(
     draftReasons: reasons,
     thesis: e.thesisText.trim() ? e.thesisText : DEFAULT_THESIS_TEXT,
     scores,
+    maturity,
     observedStructuredRatio: ratio,
     totals: { monthlyCost, monthlySavings: aggregateSavings(visible, maps, e) },
     savingsAreEstimates: items.some((o) => o.estimatedSavingsPct.source !== "confirmed"),
@@ -229,6 +256,9 @@ export function buildReportModel(
     topRecommendations: [...items].sort((a, b) => b.monthlySavings - a.monthlySavings || a.order - b.order).slice(0, 3),
     roadmap,
     squad: { roles: squadRoles, weeksByWave, totalWeeks: weeksByWave.reduce((a, w) => a + w.weeks, 0) },
+    squadByWave: squadByWave(visible).map((w) => ({ ...w, count: w.roles.length, max: MAX_SQUAD_SIZE })),
+    enablement: byOrder(initiatives.enablement),
+    expansion: byOrder(initiatives.expansion),
     kpis: buildKpis(e, { cost: monthlyCost, steps: allMaps.flatMap((m) => m.steps), ratio, scores }),
     assumptions: buildAssumptions(e, processes, items),
   };
@@ -257,9 +287,48 @@ const waveInfo = (w: number): { title: string; span: string; goal: string } => W
 const pathText = (path: Opportunity[]): string => path.map((p) => esc(p.title)).join(" → ");
 const prov = `<span class="prov">${PROVENANCE}</span>`;
 
-function renderSummary({ m, e, cur, date }: Ctx): string {
+const DIMENSION_LABEL = { processos: "processos", dados: "dados", ia: "IA" } as const;
+const FORMAT_LABEL: Record<string, string> = { treinamento: "Treinamento", workshop: "Workshop", letramento: "Letramento", mentoria: "Mentoria" };
+const days = (n: number): string => `${Number.isFinite(n) ? n : 0} ${n === 1 ? "dia" : "dias"}`;
+
+function maturityHeadline(m: DiagnosticReport): string {
+  return `Nível ${m.maturity.level} de ${MATURITY_LEVELS.length} — ${m.maturity.name}`;
+}
+
+function maturityNext(m: DiagnosticReport): string {
+  const n = m.maturity.nextLevel;
+  const weak = DIMENSION_LABEL[m.maturity.weakest];
+  if (!n) return `Nível máximo de maturidade atingido. Mantenha a evolução de ${weak}, a dimensão mais fraca hoje.`;
+  return `O que falta para o próximo nível (${n.level} — ${n.name}): +${n.pointsNeeded} ${n.pointsNeeded === 1 ? "ponto" : "pontos"} de prontidão para IA, começando por ${weak}, a dimensão mais fraca.`;
+}
+
+function maturityScale(m: DiagnosticReport): string {
+  return `<ol class="levels" aria-label="Escala de maturidade em IA">${MATURITY_LEVELS.map(
+    (l) => `<li class="${l.level === m.maturity.level ? "on" : l.level < m.maturity.level ? "done" : ""}"><b>${l.level}</b><span>${esc(l.name)}</span></li>`,
+  ).join("")}</ol>`;
+}
+
+function renderCover({ m, e, date }: Ctx): string {
+  return `
+<section id="capa" class="cover">
+  <div class="cover-top">
+    <div class="eyebrow">Diagnóstico de prontidão para IA</div>
+    <h1>${esc(e.clientName)}</h1>
+    <p class="cover-date">${date}</p>
+  </div>
+  <div class="cover-maturity">
+    <div class="eyebrow">Maturidade em IA</div>
+    <div class="cover-level">${esc(maturityHeadline(m))}</div>
+    ${maturityScale(m)}
+    <p class="cover-next">${esc(maturityNext(m))}</p>
+  </div>
+  <p class="tagline">Do what matters</p>
+</section>`;
+}
+
+function renderSummary({ m, cur }: Ctx): string {
   const score = (label: string, v: number): string =>
-    `<div class="card score"><div class="small muted">${label}</div><div class="num">${v}<span>/100</span></div><div class="bar"><i style="width:${v}%"></i></div></div>`;
+    `<div class="card score"><div class="tag">${label}</div><div class="num">${v}<span>/100</span></div><div class="bar"><i style="width:${v}%"></i></div></div>`;
   const banner = m.draft
     ? `<div class="banner" role="note"><strong>Rascunho — premissas não confirmadas</strong>${li(m.draftReasons)}</div>`
     : "";
@@ -273,19 +342,48 @@ function renderSummary({ m, e, cur, date }: Ctx): string {
         .join("")}</ol>`
     : `<p class="muted">Nenhuma oportunidade visível neste diagnóstico.</p>`;
   return `
-<section id="resumo" class="first">
-  <div class="eyebrow">Diagnóstico de prontidão para IA</div>
-  <h1>${esc(e.clientName)}</h1>
-  <p class="lead">Relatório gerado em ${date}</p>
+<section id="resumo" class="pb">
+  <h2>Resumo executivo</h2>
   ${banner}
   <div class="scores">${score("Processos", m.scores.process)}${score("Dados", m.scores.data)}${score("Prontidão para IA", m.scores.ai)}</div>
+  <div class="card maturity"><div class="tag">Maturidade em IA</div><div class="level">${esc(maturityHeadline(m))}</div><p class="small">${esc(maturityNext(m))}</p></div>
   <div class="kpi">
-    <div class="card"><div class="small muted">Custo mensal mapeado</div><div class="num">${esc(cur(m.totals.monthlyCost))}</div></div>
-    <div class="card"><div class="small muted">Economia mensal potencial</div><div class="num">${esc(cur(m.totals.monthlySavings))}</div>${m.savingsAreEstimates ? prov : ""}</div>
+    <div class="card"><div class="tag">Custo mensal mapeado</div><div class="num">${esc(cur(m.totals.monthlyCost))}</div></div>
+    <div class="card"><div class="tag">Economia mensal potencial</div><div class="num">${esc(cur(m.totals.monthlySavings))}</div>${m.savingsAreEstimates ? prov : ""}</div>
   </div>
   <h3>Principais recomendações</h3>
   ${recs}
 </section>`;
+}
+
+function renderEnablement({ m }: Ctx): string {
+  const cards = m.enablement
+    .map(
+      (x) => `<div class="card item"><div><span class="tag">${esc(FORMAT_LABEL[x.format] ?? "Capacitação")}</span><span class="tag tag-muted">Lacuna: ${esc(DIMENSION_LABEL[x.gap] ?? "—")}</span></div>
+<h3>${esc(x.title)}</h3>
+<div class="meta"><span>Público: ${esc(x.audience)}</span><span>Duração: ${esc(days(x.durationDays))}</span></div>
+<p>${esc(x.rationale)}</p></div>`,
+    )
+    .join("");
+  const body = cards ? `<div class="items">${cards}</div>` : `<p class="muted">Nenhuma ação de capacitação proposta.</p>`;
+  return `<section id="capacitacao"><h2>Capacitação: treinamentos e workshops de IA</h2>
+<p class="lead">Para sair do nível ${m.maturity.level} (${esc(m.maturity.name)}), as pessoas precisam evoluir junto com processos e dados. As ações abaixo atacam as lacunas mais fracas e acontecem na Onda 1, antes das iniciativas de IA.</p>
+${body}<p class="small muted">Capacitação não entra no cálculo de economia deste relatório.</p></section>`;
+}
+
+function renderExpansion({ m }: Ctx): string {
+  const cards = m.expansion
+    .map(
+      (x) => `<div class="card item"><span class="tag">Próximo ciclo</span><h3>${esc(x.area)}</h3>
+<p>${esc(x.rationale)}</p>
+<div class="small"><strong>Evidências nas gravações</strong>${li(x.evidence)}</div>
+${x.relatedApps.length ? `<div class="apps">${x.relatedApps.map((a) => `<span class="chip">${esc(a)}</span>`).join("")}</div>` : ""}</div>`,
+    )
+    .join("");
+  const body = cards ? `<div class="items">${cards}</div>` : `<p class="muted">Nenhuma nova frente identificada nas gravações.</p>`;
+  return `<section id="novas-frentes"><h2>Novas frentes no cliente</h2>
+<p class="lead">Áreas que apareceram nas gravações — aplicativos e passagens de bastão — mas ainda não foram mapeadas. São candidatas ao próximo ciclo do diagnóstico.</p>
+${body}<p class="small muted">Sem estimativa financeira: as frentes precisam ser gravadas e mapeadas antes de qualquer número.</p></section>`;
 }
 
 function renderThesis({ m }: Ctx): string {
@@ -370,10 +468,16 @@ function renderRoadmap({ m, cur, num }: Ctx): string {
         })
         .join("");
       const body = w.items.length ? `<table><tbody>${rows}</tbody></table>` : `<p class="muted">Nenhuma oportunidade nesta onda.</p>`;
-      return `<div class="card wave"><div class="eyebrow">${info.title} · ${info.span}</div><h3>${info.goal}</h3>${body}</div>`;
+      const training =
+        w.wave === 1 && m.enablement.length
+          ? `<h4>Capacitação</h4><table><tbody>${m.enablement
+              .map((x) => `<tr><td>${esc(x.title)}<div class="small muted">${esc(FORMAT_LABEL[x.format] ?? "Capacitação")} · ${esc(x.audience)}</div></td><td class="r">${esc(days(x.durationDays))}</td></tr>`)
+              .join("")}</tbody></table>`
+          : "";
+      return `<div class="card wave"><div class="eyebrow">${info.title} · ${info.span}</div><h3>${info.goal}</h3>${body}${training}</div>`;
     })
     .join("");
-  return `<section id="roadmap"><h2>Roadmap de 12 meses</h2><p class="lead">Três ondas: primeiro o terreno (dados e processos), depois a automação determinística e, só então, a IA.</p>${waves}</section>`;
+  return `<section id="roadmap"><h2>Roadmap de 12 meses</h2><p class="lead">Três ondas: primeiro o terreno (dados, processos e capacitação das pessoas), depois a automação determinística e, só então, a IA.</p>${waves}</section>`;
 }
 
 function renderSquad({ m }: Ctx): string {
@@ -383,15 +487,20 @@ function renderSquad({ m }: Ctx): string {
         .join("")}</tbody></table>`
     : `<p class="muted">Nenhum perfil sugerido.</p>`;
   const weeks = m.squad.weeksByWave
-    .map((w) => `<tr><td>${WAVES[w.wave].title} (${WAVES[w.wave].span})</td><td class="r">${w.weeks} semanas</td></tr>`)
+    .map((w) => {
+      const sq = m.squadByWave.find((x) => x.wave === w.wave);
+      const people = sq ? `${sq.count} de ${sq.max} pessoas` : "—";
+      const names = sq?.roles.length ? sq.roles.map(esc).join(", ") : `<span class="muted">sem perfis</span>`;
+      return `<tr><td>${WAVES[w.wave].title} (${WAVES[w.wave].span})</td><td>${names}</td><td class="r nowrap">${people}</td><td class="r nowrap">${w.weeks} semanas</td></tr>`;
+    })
     .join("");
   const kpis = m.kpis
     .map((k) => `<tr><td>${esc(k.label)}</td><td class="r">${esc(k.baseline)}</td><td>${k.direction}</td></tr>`)
     .join("");
-  return `<section id="squad" class="pb"><h2>Proposta de squad</h2><p class="lead">Perfis sugeridos pelas oportunidades e indicadores para medir o resultado contra a linha de base deste diagnóstico.</p>
+  return `<section id="squad" class="pb"><h2>Proposta de squad</h2><p class="lead">Squads enxutos, de até ${MAX_SQUAD_SIZE} pessoas por onda. Perfis sugeridos pelas oportunidades e indicadores para medir o resultado contra a linha de base deste diagnóstico.</p>
 <h3>Perfis</h3>${roles}
-<h3>Duração</h3><table><tbody>${weeks}<tr><td><strong>Total</strong></td><td class="r"><strong>${m.squad.totalWeeks} semanas</strong></td></tr></tbody></table>
-<p class="small muted">Premissa: as oportunidades de uma mesma onda são entregues em sequência pelo mesmo squad.</p>
+<h3>Squad e duração por onda</h3><table><thead><tr><th>Onda</th><th>Perfis</th><th class="r">Squad</th><th class="r">Duração</th></tr></thead><tbody>${weeks}<tr><td colspan="3"><strong>Total</strong></td><td class="r nowrap"><strong>${m.squad.totalWeeks} semanas</strong></td></tr></tbody></table>
+<p class="small muted">Premissa: squads de no máximo ${MAX_SQUAD_SIZE} pessoas; as oportunidades de uma mesma onda são entregues em sequência pelo mesmo squad.</p>
 <h3>KPIs e linha de base</h3><table><thead><tr><th>Indicador</th><th class="r">Linha de base</th><th>Meta</th></tr></thead><tbody>${kpis}</tbody></table></section>`;
 }
 
@@ -406,6 +515,9 @@ function renderAppendix({ m, date }: Ctx): string {
     `Oportunidades sobre o mesmo passo são etapas de um caminho, não somam: vale a maior economia por passo.`,
     `Score de dados: questionário ${pct(w.dataWeights.questionnaire)} + dados estruturados observados ${pct(w.dataWeights.observed)}.`,
     `Prontidão para IA: ${pct(w.aiWeights.min)} do menor score + ${pct(w.aiWeights.mean)} da média.`,
+    `Maturidade em IA pela prontidão: ${MATURITY_LEVELS.map((l) => `nível ${l.level} ${l.name} (a partir de ${l.min})`).join(", ")}.`,
+    `Squad: no máximo ${MAX_SQUAD_SIZE} pessoas por oportunidade e por onda (perfis distintos).`,
+    `Capacitação e novas frentes não entram no custo nem na economia.`,
     `Score de processo: penalidades por variante (${p.perVariant} pontos), transferência manual (até ${p.manualTransferRatio}), retrabalho (até ${p.reworkRatio}) e passos sem responsável (até ${p.unownedRatio}).`,
   ];
   return `<section id="premissas" class="pb"><h2>Apêndice de premissas</h2><p class="lead">Todo número deste relatório e a origem dele. Parâmetros do modelo na versão ${m.configVersion}.</p>
@@ -423,7 +535,7 @@ export function renderReportHtml(model: DiagnosticReport, e: Engagement, _maps?:
     date: new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeZone: "America/Sao_Paulo" }).format(new Date(model.generatedAt)),
     num: new Map(model.opportunities.map((o, i) => [o.id, i + 1])),
   };
-  const body = [renderSummary, renderThesis, renderProcessMaps, renderData, renderOpportunities, renderRoadmap, renderSquad, renderAppendix]
+  const body = [renderCover, renderSummary, renderThesis, renderProcessMaps, renderData, renderOpportunities, renderEnablement, renderRoadmap, renderExpansion, renderSquad, renderAppendix]
     .map((f) => f(ctx))
     .join("");
   return `<!doctype html>
@@ -435,6 +547,7 @@ export function renderReportHtml(model: DiagnosticReport, e: Engagement, _maps?:
 <style>${REPORT_CSS}</style>
 </head>
 <body>
+<div class="page-footer" aria-hidden="true">avanade.com</div>
 <main>${body}</main>
 </body>
 </html>

@@ -338,5 +338,70 @@
       "hidden": true,
       "order": 4
     }
-  ]
+  ],
+  "initiatives": {
+    "enablement": [
+      {
+        "id": "c1",
+        "title": "Letramento em IA para a liderança",
+        "format": "letramento",
+        "audience": "Diretoria e gestores",
+        "gap": "ia",
+        "rationale": "A prontidão para IA ainda é baixa; a liderança precisa de vocabulário comum para priorizar casos de uso com responsabilidade.",
+        "durationDays": 1,
+        "hidden": false,
+        "order": 0
+      },
+      {
+        "id": "c2",
+        "title": "Workshop de governança de dados",
+        "format": "workshop",
+        "audience": "TI e donos de dados do Financeiro",
+        "gap": "dados",
+        "rationale": "Governança foi o eixo mais fraco do questionário; definir donos, dicionário e regras de acesso antes de automatizar.",
+        "durationDays": 2,
+        "hidden": false,
+        "order": 1
+      },
+      {
+        "id": "c3",
+        "title": "Mentoria oculta",
+        "format": "mentoria",
+        "audience": "Analistas",
+        "gap": "processos",
+        "rationale": "Item oculto pelo consultor.",
+        "durationDays": 3,
+        "hidden": true,
+        "order": 2
+      }
+    ],
+    "expansion": [
+      {
+        "id": "x1",
+        "area": "Contas a pagar",
+        "rationale": "O ERP e o portal do banco aparecem nas gravações da conciliação, com repasses ao time de contas a pagar que ainda não foram mapeados.",
+        "evidence": [
+          "Passagem de bastão para contas a pagar observada na conciliação bancária.",
+          "Portal do banco usado também para agendar pagamentos."
+        ],
+        "relatedApps": [
+          "ERP",
+          "Portal do banco"
+        ],
+        "hidden": false,
+        "order": 0
+      },
+      {
+        "id": "x2",
+        "area": "Frente oculta",
+        "rationale": "Oculta.",
+        "evidence": [
+          "e"
+        ],
+        "relatedApps": [],
+        "hidden": true,
+        "order": 1
+      }
+    ]
+  }
 }

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import type { Engagement, Opportunity, ProcessMap } from "./diagnostic";
+import type { Engagement, Initiatives, Opportunity, ProcessMap } from "./diagnostic";
 import { DEFAULT_THESIS_TEXT, DIAGNOSTIC_CONFIG_VERSION } from "./diagnostic-config";
 import { buildReportModel, escapeHtml, renderReportHtml } from "./diagnostic-report";
 
-type Fixture = { engagement: Engagement; maps: Record<string, ProcessMap>; opportunities: Opportunity[] };
+type Fixture = { engagement: Engagement; maps: Record<string, ProcessMap>; opportunities: Opportunity[]; initiatives: Initiatives };
 const load = (): Fixture =>
   JSON.parse(readFileSync(new URL("./__fixtures__/diagnostic-engagement.json", import.meta.url), "utf8")) as Fixture;
 
@@ -91,16 +91,16 @@ test("empty thesis falls back to the default text", () => {
   assert.ok(html.includes(escapeHtml(DEFAULT_THESIS_TEXT)));
 });
 
-test("all eight sections render in order", () => {
+test("all sections render in order", () => {
   const f = load();
   const html = renderReportHtml(buildReportModel(f.engagement, f.maps, f.opportunities, NOW), f.engagement, f.maps);
-  const ids = ["resumo", "antes-da-ia", "mapa", "dados", "oportunidades", "roadmap", "squad", "premissas"];
+  const ids = ["resumo", "antes-da-ia", "mapa", "dados", "oportunidades", "capacitacao", "roadmap", "novas-frentes", "squad", "premissas"];
   const positions = ids.map((id) => html.indexOf(`id="${id}"`));
   assert.ok(positions.every((p) => p >= 0), `missing section: ${positions.join(",")}`);
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
   for (const t of ["Onda 1", "Onda 2", "Onda 3", "0–3 meses", "3–6 meses", "6–12 meses"]) assert.ok(html.includes(t), t);
   assert.ok(html.includes("R$"));
-  assert.match(html, /#2e7d5b/i); // structured green is used
+  assert.match(html, /#00A650/i); // structured green is used
 });
 
 test("rendering is deterministic, self-contained and uses no external URLs", () => {
@@ -224,4 +224,69 @@ test("squad roles are grouped case-insensitively and generatedAt uses Sao Paulo 
   const late = Date.UTC(2026, 10, 13, 1, 0, 0); // 22:00 on the 12th in Sao Paulo
   const html = renderReportHtml(buildReportModel(f.engagement, f.maps, f.opportunities, late), f.engagement, f.maps);
   assert.ok(html.includes("12 de novembro de 2026"));
+});
+
+const full = (f: Fixture, now = NOW) => buildReportModel(f.engagement, f.maps, f.opportunities, now, f.initiatives);
+const fullHtml = (f: Fixture): string => renderReportHtml(full(f), f.engagement, f.maps);
+
+test("maturity, capacitação, novas frentes and Avanade identity are in the report", () => {
+  const f = load();
+  const m = full(f);
+  assert.equal(m.maturity.level, 2);
+  assert.equal(m.maturity.name, "Exploratório");
+  assert.equal(m.maturity.weakest, "dados");
+  const html = fullHtml(f);
+  for (const t of ["Nível 2 de 5 — Exploratório", "Capacitação", "Novas frentes no cliente", "Do what matters", "avanade.com", "#FF5800", "#DC4600"]) {
+    assert.ok(html.includes(t), t);
+  }
+  assert.ok(!/https?:\/\//.test(html));
+  assert.ok(!/<script/i.test(html));
+  assert.equal((html.match(/Do what matters/g) ?? []).length, 1);
+});
+
+test("enablement and expansion never change money totals; hidden items are absent", () => {
+  const f = load();
+  const m = full(f);
+  assert.equal(m.totals.monthlySavings, 6293.33);
+  assert.equal(m.totals.monthlyCost, 15900);
+  assert.deepEqual(m.enablement.map((x) => x.id), ["c1", "c2"]);
+  assert.deepEqual(m.expansion.map((x) => x.id), ["x1"]);
+  const html = fullHtml(f);
+  assert.ok(!html.includes("Mentoria oculta"));
+  assert.ok(!html.includes("Frente oculta"));
+  assert.ok(html.includes("Letramento em IA para a liderança"));
+  assert.ok(html.includes("Contas a pagar"));
+});
+
+test("enablement and expansion strings are escaped", () => {
+  const f = load();
+  f.initiatives.enablement[0]!.title = "<b>curso</b>";
+  f.initiatives.enablement[0]!.audience = `"><svg onload=x>`;
+  f.initiatives.expansion[0]!.area = "<i>área</i>";
+  f.initiatives.expansion[0]!.evidence = ["<u>ev</u>"];
+  const html = fullHtml(f);
+  assert.ok(!html.includes("<b>curso"));
+  assert.ok(!html.includes("<svg onload"));
+  assert.ok(!html.includes("<i>área"));
+  assert.ok(!html.includes("<u>ev"));
+  assert.ok(html.includes("&lt;b&gt;curso&lt;/b&gt;"));
+});
+
+test("squad by wave shows n de 5 pessoas and enablement sits in Onda 1 of the roadmap", () => {
+  const f = load();
+  const m = full(f);
+  assert.deepEqual(m.squadByWave.map((w) => [w.wave, w.count, w.max]), [[1, 1, 5], [2, 2, 5], [3, 3, 5]]);
+  const html = fullHtml(f);
+  assert.ok(html.includes("2 de 5 pessoas"));
+  const roadmap = html.slice(html.indexOf('id="roadmap"'), html.indexOf('id="novas-frentes"'));
+  const wave1 = roadmap.slice(0, roadmap.indexOf("Onda 2"));
+  assert.ok(wave1.includes("Workshop de governança de dados"));
+});
+
+test("report without initiatives renders empty states and stays deterministic", () => {
+  const f = load();
+  const a = renderReportHtml(buildReportModel(f.engagement, f.maps, f.opportunities, NOW), f.engagement, f.maps);
+  assert.ok(a.includes("Novas frentes no cliente"));
+  assert.ok(!/NaN|undefined/.test(a.replace(/<style>[\s\S]*?<\/style>/, "")));
+  assert.equal(fullHtml(load()), fullHtml(load()));
 });

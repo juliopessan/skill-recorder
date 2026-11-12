@@ -1,18 +1,24 @@
 // Pure SVG builders for the diagnostic report. No Electron / Node-only imports: bundled for the renderer too.
 import type { ProcessMap, ProcessMapStep, QuestionnaireAxis } from "./diagnostic";
 
+/** Avanade identity: orange for marks, dark orange / greys for small text (contrast on white). */
 export const COLORS = {
-  ink: "#1d2733",
-  muted: "#5b6672",
-  line: "#c9d0d8",
-  grid: "#e3e7ec",
-  accent: "#1f4e79",
-  structured: "#2e7d5b",
-  semi: "#b7791f",
-  unstructured: "#b83a3a",
-  structuredTint: "#e6f2ec",
-  semiTint: "#faf0dc",
-  unstructuredTint: "#f8e4e4",
+  ink: "#333333",
+  muted: "#666666",
+  line: "#cccccc",
+  grid: "#e5e5e5",
+  accent: "#FF5800",
+  accentDark: "#DC4600",
+  aurora: "#890078",
+  structured: "#00A650",
+  semi: "#FFB414",
+  unstructured: "#C80000",
+  structuredText: "#00733A",
+  semiText: "#8A5A00",
+  unstructuredText: "#C80000",
+  structuredTint: "#E5F6EC",
+  semiTint: "#FFF4DC",
+  unstructuredTint: "#F9E5E5",
 } as const;
 
 export function escapeHtml(value: string): string {
@@ -51,9 +57,9 @@ export function wrapText(text: string, maxChars: number, maxLines: number): stri
 }
 
 const STRUCTURE = {
-  structured: { stroke: COLORS.structured, fill: COLORS.structuredTint, label: "Dados estruturados" },
-  semi: { stroke: COLORS.semi, fill: COLORS.semiTint, label: "Dados semiestruturados" },
-  unstructured: { stroke: COLORS.unstructured, fill: COLORS.unstructuredTint, label: "Dados não estruturados" },
+  structured: { stroke: COLORS.structured, fill: COLORS.structuredTint, text: COLORS.structuredText, label: "Dados estruturados" },
+  semi: { stroke: COLORS.semi, fill: COLORS.semiTint, text: COLORS.semiText, label: "Dados semiestruturados" },
+  unstructured: { stroke: COLORS.unstructured, fill: COLORS.unstructuredTint, text: COLORS.unstructuredText, label: "Dados não estruturados" },
 } as const;
 
 export function formatDuration(ms: number | null): string {
@@ -89,18 +95,18 @@ function stepBox(step: ProcessMapStep, index: number, x: number, y: number): str
         `<text x="${bx + 8}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${letter}</text></g>`,
     );
   };
-  if (step.manualTransfer) addBadge("T", COLORS.accent, "Transferência manual de dados");
+  if (step.manualTransfer) addBadge("T", COLORS.accentDark, "Transferência manual de dados");
   if (step.rework) addBadge("R", COLORS.ink, "Retrabalho");
   const titleSvg = title
     .map((l, i) => `<text x="${x + 10}" y="${y + 34 + i * 14}" font-size="11" font-weight="700" fill="${COLORS.ink}">${escapeHtml(l)}</text>`)
     .join("");
   return (
-    `<g><rect x="${x}" y="${y}" width="${BOX_W}" height="${BOX_H}" rx="6" fill="${st.fill}" stroke="${st.stroke}" stroke-width="1.5"/>` +
+    `<g><rect x="${x}" y="${y}" width="${BOX_W}" height="${BOX_H}" rx="2" fill="${st.fill}" stroke="${st.stroke}" stroke-width="1.5"/>` +
     `<text x="${x + 10}" y="${y + 17}" font-size="9" font-weight="700" fill="${COLORS.muted}">PASSO ${index + 1}</text>` +
     titleSvg +
     `<text x="${x + 10}" y="${y + 68}" font-size="11" fill="${COLORS.ink}">${escapeHtml(formatDuration(step.medianDurationMs))}</text>` +
     `<text x="${x + 10}" y="${y + 83}" font-size="9" fill="${COLORS.muted}">${escapeHtml(apps)}</text>` +
-    `<text x="${x + 10}" y="${y + 97}" font-size="9" font-weight="700" fill="${st.stroke}">${st.label}</text>` +
+    `<text x="${x + 10}" y="${y + 97}" font-size="9" font-weight="700" fill="${st.text}">${st.label}</text>` +
     badges.join("") +
     `</g>`
   );
@@ -144,7 +150,7 @@ export function processFlowSvg(map: ProcessMap, label: string): string {
     legend.push(`<rect x="${lx}" y="${legendY - 9}" width="11" height="11" rx="2" fill="${STRUCTURE[k].fill}" stroke="${STRUCTURE[k].stroke}"/><text x="${lx + 16}" y="${legendY}" font-size="10" fill="${COLORS.muted}">${STRUCTURE[k].label.replace("Dados ", "")}</text>`);
     lx += 118;
   });
-  legend.push(`<rect x="${lx}" y="${legendY - 10}" width="13" height="13" rx="3" fill="${COLORS.accent}"/><text x="${lx + 6.5}" y="${legendY}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">T</text><text x="${lx + 19}" y="${legendY}" font-size="10" fill="${COLORS.muted}">transferência manual</text>`);
+  legend.push(`<rect x="${lx}" y="${legendY - 10}" width="13" height="13" rx="3" fill="${COLORS.accentDark}"/><text x="${lx + 6.5}" y="${legendY}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">T</text><text x="${lx + 19}" y="${legendY}" font-size="10" fill="${COLORS.muted}">transferência manual</text>`);
   lx += 150;
   legend.push(`<rect x="${lx}" y="${legendY - 10}" width="13" height="13" rx="3" fill="${COLORS.ink}"/><text x="${lx + 6.5}" y="${legendY}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">R</text><text x="${lx + 19}" y="${legendY}" font-size="10" fill="${COLORS.muted}">retrabalho</text>`);
   return (
@@ -214,8 +220,8 @@ export interface MatrixPoint {
   quickWin: boolean;
 }
 
-const WAVE_FILL = { 1: "#cfe0ef", 2: "#7fa6c9", 3: "#1f4e79" } as const;
-const WAVE_TEXT = { 1: COLORS.ink, 2: COLORS.ink, 3: "#ffffff" } as const;
+const WAVE_FILL = { 1: "#FFD5BF", 2: COLORS.accentDark, 3: COLORS.aurora } as const;
+const WAVE_TEXT = { 1: COLORS.ink, 2: "#ffffff", 3: "#ffffff" } as const;
 
 /** Value (monthly savings) x effort matrix; points are numbered like the opportunity cards. */
 export function valueEffortMatrixSvg(points: MatrixPoint[], formatMoney: (n: number) => string): string {
@@ -243,13 +249,13 @@ export function valueEffortMatrixSvg(points: MatrixPoint[], formatMoney: (n: num
       return inCol.map((p, k) => {
         const cx = x0 + colW * (ci + 0.5) + (k - (inCol.length - 1) / 2) * 30;
         const cy = yOf(max === 0 ? 0 : p.savings / max);
-        const ring = p.quickWin ? `stroke="${COLORS.structured}" stroke-width="3"` : `stroke="${COLORS.accent}" stroke-width="1"`;
+        const ring = p.quickWin ? `stroke="${COLORS.structured}" stroke-width="3"` : `stroke="#ffffff" stroke-width="1"`;
         return `<g><circle cx="${n1(cx)}" cy="${n1(cy)}" r="12" fill="${WAVE_FILL[p.wave]}" ${ring}/><text x="${n1(cx)}" y="${n1(cy + 4)}" text-anchor="middle" font-size="11" font-weight="700" fill="${WAVE_TEXT[p.wave]}">${p.n}</text></g>`;
       });
     })
     .join("");
   const legend = ([1, 2, 3] as const)
-    .map((w, i) => `<circle cx="${x0 + i * 90 + 6}" cy="${y1 + 56}" r="6" fill="${WAVE_FILL[w]}" stroke="${COLORS.accent}"/><text x="${x0 + i * 90 + 17}" y="${y1 + 60}" font-size="10" fill="${COLORS.muted}">Onda ${w}</text>`)
+    .map((w, i) => `<circle cx="${x0 + i * 90 + 6}" cy="${y1 + 56}" r="6" fill="${WAVE_FILL[w]}" stroke="${COLORS.line}"/><text x="${x0 + i * 90 + 17}" y="${y1 + 60}" font-size="10" fill="${COLORS.muted}">Onda ${w}</text>`)
     .join("");
   const qw = `<circle cx="${x0 + 290}" cy="${y1 + 56}" r="6" fill="#fff" stroke="${COLORS.structured}" stroke-width="3"/><text x="${x0 + 301}" y="${y1 + 60}" font-size="10" fill="${COLORS.muted}">Quick win</text>`;
   return (
