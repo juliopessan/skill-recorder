@@ -2,9 +2,8 @@ import { useId, useState } from "react";
 
 import type { Opportunity } from "../../common/diagnostic";
 import { formatCurrency, type ReportOpportunity } from "../../common/diagnostic-report";
-import { confirmField, moveOpportunity, setOpportunityHidden } from "../diagnostic-view-state";
-import type { GenerationState } from "./ProcessPanel";
-import { Section, SourceBadge } from "./shared";
+import { confirmField, moveOpportunity, ordered, setOpportunityHidden } from "../diagnostic-view-state";
+import { GenerateControls, Section, SourceBadge, type GenerationState } from "./shared";
 
 const WAVE_LABEL: Record<1 | 2 | 3, string> = { 1: "Onda 1 · dados", 2: "Onda 2 · automação", 3: "Onda 3 · IA" };
 const EFFORT_LABEL = { S: "esforço pequeno", M: "esforço médio", L: "esforço grande" } as const;
@@ -35,18 +34,17 @@ export function OpportunityList({
   generation: GenerationState;
   disabled: boolean;
   savingsAreEstimates: boolean;
-  onSave: (next: Opportunity[]) => void | Promise<void>;
+  onSave: (update: (prev: Opportunity[]) => Opportunity[]) => void;
   onGenerate: (feedback: string) => void;
   onCancel: () => void;
 }) {
   const feedbackId = useId();
   const [feedback, setFeedback] = useState("");
-  const sorted = [...opportunities].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const [confirming, setConfirming] = useState(false);
+  const sorted = ordered(opportunities);
   const rows = new Map(report.map((r) => [r.id, r]));
   const titles = new Map(opportunities.map((o) => [o.id, o.title]));
-  const running = generation.running?.kind === "opportunities";
   const anyRunning = generation.running !== null;
-  const failure = generation.failure?.scope === "opportunities" ? generation.failure : null;
 
   return (
     <Section
@@ -75,7 +73,7 @@ export function OpportunityList({
                         className="linky"
                         disabled={disabled || i === 0}
                         aria-label={`Subir ${o.title}`}
-                        onClick={() => void onSave(moveOpportunity(sorted, o.id, -1))}
+                        onClick={() => onSave((prev) => moveOpportunity(prev, o.id, -1))}
                       >
                         Subir
                       </button>
@@ -84,7 +82,7 @@ export function OpportunityList({
                         className="linky"
                         disabled={disabled || i === sorted.length - 1}
                         aria-label={`Descer ${o.title}`}
-                        onClick={() => void onSave(moveOpportunity(sorted, o.id, 1))}
+                        onClick={() => onSave((prev) => moveOpportunity(prev, o.id, 1))}
                       >
                         Descer
                       </button>
@@ -92,7 +90,7 @@ export function OpportunityList({
                         type="button"
                         className="linky"
                         disabled={disabled}
-                        onClick={() => void onSave(setOpportunityHidden(sorted, o.id, !o.hidden))}
+                        onClick={() => onSave((prev) => setOpportunityHidden(prev, o.id, !o.hidden))}
                       >
                         {o.hidden ? "Mostrar" : "Ocultar"}
                       </button>
@@ -101,7 +99,7 @@ export function OpportunityList({
                   <h3 className="diag-opp-title">{o.title}</h3>
                   <p className="diag-opp-rationale">{o.rationale}</p>
                   <dl className="diag-facts">
-                    <div><dt>Processo</dt><dd>{r?.processName ?? processNames[o.processId] ?? o.processId}</dd></div>
+                    <div><dt>Processo</dt><dd>{r?.processName ?? processNames[o.processId] ?? "Processo removido"}</dd></div>
                     <div><dt>Esforço / risco</dt><dd>{EFFORT_LABEL[o.effort]} · {RISK_LABEL[o.risk]}</dd></div>
                     {r ? (
                       <>
@@ -121,15 +119,15 @@ export function OpportunityList({
                     )}
                     <div>
                       <dt>Economia pedida</dt>
-                      <dd>
-                        {pct(o.estimatedSavingsPct.value)} <SourceBadge source={o.estimatedSavingsPct.source} />
+                      <dd className="diag-fact-line">
+                        <span>{pct(o.estimatedSavingsPct.value)}</span> <SourceBadge source={o.estimatedSavingsPct.source} />
                         {o.estimatedSavingsPct.source !== "confirmed" && (
                           <button
                             type="button"
                             className="linky diag-inline-btn"
                             disabled={disabled}
                             onClick={() =>
-                              void onSave(sorted.map((x) => (x.id === o.id ? { ...x, estimatedSavingsPct: confirmField(x.estimatedSavingsPct) } : x)))
+                              onSave((prev) => prev.map((x) => (x.id === o.id ? { ...x, estimatedSavingsPct: confirmField(x.estimatedSavingsPct) } : x)))
                             }
                           >
                             Confirmar
@@ -171,31 +169,35 @@ export function OpportunityList({
         />
       </div>
       {!hasMaps && <p className="diag-warn">Gere ao menos um mapa de processo antes de gerar oportunidades.</p>}
-      <div className="diag-actions">
-        {running ? (
-          <>
-            <span className="status-line diag-progress" role="status" aria-live="polite">
-              <span className="spinner" aria-hidden="true" />
-              <span className="status-text">{generation.progress ?? "Gerando oportunidades…"}</span>
-            </span>
-            <button type="button" className="ghost" onClick={onCancel}>Cancelar</button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="record-cta"
-            disabled={disabled || anyRunning || !hasMaps}
-            onClick={() => onGenerate(feedback.trim())}
-          >
-            {sorted.length > 0 ? "Regenerar oportunidades" : "Gerar oportunidades"}
-          </button>
-        )}
-      </div>
-      {failure && (
-        <div className="diag-error" role="alert">
-          <span>{failure.message}</span>
-          <button type="button" className="ghost" disabled={anyRunning} onClick={failure.retry}>Tentar novamente</button>
+      {confirming ? (
+        <div className="diag-error" role="alertdialog" aria-label="Confirmar nova geração de oportunidades">
+          <span>
+            Gerar de novo substitui as oportunidades atuais: o que você ocultou e a ordem escolhida serão perdidos. Continuar?
+          </span>
+          <span className="diag-inline-confirm">
+            <button type="button" className="linky" onClick={() => setConfirming(false)}>Cancelar</button>
+            <button
+              type="button"
+              className="danger"
+              onClick={() => {
+                setConfirming(false);
+                onGenerate(feedback.trim());
+              }}
+            >
+              Substituir
+            </button>
+          </span>
         </div>
+      ) : (
+        <GenerateControls
+          scope="opportunities"
+          generation={generation}
+          label={sorted.length > 0 ? "Regenerar oportunidades" : "Gerar oportunidades"}
+          runningLabel="Gerando oportunidades…"
+          disabled={disabled || !hasMaps}
+          onGenerate={() => (sorted.length > 0 ? setConfirming(true) : onGenerate(feedback.trim()))}
+          onCancel={onCancel}
+        />
       )}
     </Section>
   );

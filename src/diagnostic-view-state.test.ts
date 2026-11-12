@@ -4,10 +4,13 @@ import test from "node:test";
 import type { Engagement, Opportunity, Process, ProcessMap } from "../common/diagnostic";
 import {
   canGenerateMap,
+  createUpdateQueue,
   confirmField,
   mergeSuggestedQuestionnaire,
   moveOpportunity,
   nextStep,
+  parseNonNegative,
+  SAVE_FAILED_MESSAGE,
   setOpportunityHidden,
 } from "./diagnostic-view-state";
 
@@ -138,4 +141,94 @@ test("mergeSuggestedQuestionnaire never overwrites confirmed answers", () => {
   const out = mergeSuggestedQuestionnaire(current, suggested);
   assert.equal(out.structure?.answer, 4);
   assert.equal(out.access?.source, "ai-suggested");
+});
+
+test("nextStep sends a process without a role, or with a zero hourly cost, back to baseline", () => {
+  const confirmed = {
+    volumePerMonth: { value: 10, source: "confirmed" as const },
+    peopleCount: { value: 2, source: "confirmed" as const },
+  };
+  const withMap = { p1: map() };
+  const noRole = eng({ dataQuestionnaire: full, processes: [proc({ ...confirmed })] });
+  assert.equal(nextStep(noRole, withMap, [opp("o1", 0)]), "baseline");
+  const free = eng({
+    dataQuestionnaire: full,
+    roles: [{ id: "r1", name: "Analista", hourlyCost: 0 }],
+    processes: [proc({ ...confirmed, roleId: "r1" })],
+  });
+  assert.equal(nextStep(free, withMap, [opp("o1", 0)]), "baseline");
+});
+
+test("parseNonNegative accepts comma decimals and rejects empty, negative and text", () => {
+  assert.equal(parseNonNegative("12,5"), 12.5);
+  assert.equal(parseNonNegative(" 0 "), 0);
+  assert.equal(parseNonNegative(""), null);
+  assert.equal(parseNonNegative("-1"), null);
+  assert.equal(parseNonNegative("abc"), null);
+});
+
+test("update queue: two updaters enqueued before the first save resolves both reach the saved value", async () => {
+  const saved: { a: number; b: number }[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const q = createUpdateQueue({ a: 0, b: 0 }, async (v) => {
+    if (saved.length === 0) await gate;
+    saved.push(v);
+    return null;
+  });
+  const first = q.enqueue((p) => ({ ...p, a: 1 }));
+  const second = q.enqueue((p) => ({ ...p, b: 2 }));
+  release();
+  assert.deepEqual(await Promise.all([first, second]), [null, null]);
+  assert.deepEqual(saved.at(-1), { a: 1, b: 2 });
+  assert.deepEqual(q.get(), { a: 1, b: 2 });
+});
+
+test("update queue: saves run one at a time, in order", async () => {
+  const order: string[] = [];
+  const q = createUpdateQueue(0, async (v) => {
+    order.push(`start${v}`);
+    await new Promise((r) => setTimeout(r, 5));
+    order.push(`end${v}`);
+    return null;
+  });
+  await Promise.all([q.enqueue((p) => p + 1), q.enqueue((p) => p + 1)]);
+  assert.deepEqual(order, ["start2", "end2", "start2", "end2"]);
+});
+
+test("update queue: a failing save reports the error and does not drop later updates", async () => {
+  const saved: number[] = [];
+  let calls = 0;
+  const q = createUpdateQueue(0, async (v) => {
+    calls++;
+    if (calls === 1) return "Falhou.";
+    saved.push(v);
+    return null;
+  });
+  const first = q.enqueue((p) => p + 1);
+  const second = q.enqueue((p) => p + 10);
+  assert.equal(await first, "Falhou.");
+  assert.equal(await second, null);
+  assert.deepEqual(saved, [11]);
+});
+
+test("update queue: a rejected save becomes an error message and the queue keeps working", async () => {
+  let calls = 0;
+  const q = createUpdateQueue(0, async () => {
+    if (++calls === 1) throw new Error("boom");
+    return null;
+  });
+  assert.equal(await q.enqueue((p) => p + 1), SAVE_FAILED_MESSAGE);
+  assert.equal(await q.enqueue((p) => p + 1), null);
+  assert.equal(q.get(), 2);
+});
+
+test("update queue: sync is ignored while edits are pending and adopted when idle", async () => {
+  const q = createUpdateQueue(0, async () => null);
+  const p = q.enqueue((v) => v + 1);
+  q.sync(99);
+  assert.equal(q.get(), 1);
+  await p;
+  q.sync(99);
+  assert.equal(q.get(), 99);
 });

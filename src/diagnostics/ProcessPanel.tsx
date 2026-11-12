@@ -3,25 +3,16 @@ import { useId, useState } from "react";
 import type { Engagement, Process, ProcessMap, SourcedNumber } from "../../common/diagnostic";
 import { formatCurrency, type ReportProcess } from "../../common/diagnostic-report";
 import type { SessionSummary } from "../../common/ipc";
-import { canGenerateMap, confirmField, newId } from "../diagnostic-view-state";
+import { canGenerateMap, confirmField, newId, parseNonNegative } from "../diagnostic-view-state";
 import { formatDur, formatWhen } from "../format";
-import { CommitInput, Section, SourceBadge } from "./shared";
+import { CommitInput, GenerateControls, Section, SourceBadge, validateNonNegative, type GenerationState } from "./shared";
 
-export interface GenerationState {
-  /** What is running, or null when idle. */
-  running: { kind: "map"; processId: string } | { kind: "opportunities" } | null;
-  progress: string | null;
-  /** Last failure, scoped so "Tentar novamente" shows on the right card. */
-  failure: { scope: string; message: string; retry: () => void } | null;
-}
+export type { GenerationState };
+
+type Update<T> = (prev: T) => T;
 
 const CONFIDENCE_LABEL: Record<ProcessMap["confidence"], string> = { high: "alta", medium: "média", low: "baixa" };
 const STRUCTURE_LABEL = { structured: "estruturado", semi: "semi-estruturado", unstructured: "não estruturado" } as const;
-
-const toNumber = (s: string): number | null => {
-  const n = Number(s.replace(",", "."));
-  return s.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : null;
-};
 
 function SourcedInput({
   label,
@@ -32,7 +23,7 @@ function SourcedInput({
   label: string;
   value: SourcedNumber | undefined;
   disabled: boolean;
-  onChange: (next: SourcedNumber) => void;
+  onChange: (update: Update<SourcedNumber | undefined>) => void;
 }) {
   return (
     <div className="diag-sourced">
@@ -43,15 +34,16 @@ function SourcedInput({
         step={1}
         value={value?.value}
         disabled={disabled}
+        validate={validateNonNegative}
         onCommit={(v) => {
-          const n = toNumber(v);
-          if (n !== null) onChange(confirmField(value ?? { value: n, source: "confirmed" }, n));
+          const n = parseNonNegative(v);
+          if (n !== null) onChange((prev) => confirmField(prev ?? { value: n, source: "confirmed" }, n));
         }}
       />
       <div className="diag-sourced-meta">
         {value ? <SourceBadge source={value.source} /> : <span className="diag-source none">sem valor</span>}
         {value && value.source !== "confirmed" && (
-          <button type="button" className="linky" disabled={disabled} onClick={() => onChange(confirmField(value))}>
+          <button type="button" className="linky" disabled={disabled} onClick={() => onChange((prev) => confirmField(prev ?? value))}>
             Confirmar valor
           </button>
         )}
@@ -82,7 +74,7 @@ function ProcessCard({
   analyzedIds: ReadonlySet<string>;
   generation: GenerationState;
   disabled: boolean;
-  onChange: (next: Process) => void;
+  onChange: (update: Update<Process>) => void;
   onRemove: () => void;
   onGenerate: (feedback: string) => void;
   onCancel: () => void;
@@ -91,19 +83,17 @@ function ProcessCard({
   const feedbackId = useId();
   const [feedback, setFeedback] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const thisRunning = generation.running?.kind === "map" && generation.running.processId === process.id;
   const anyRunning = generation.running !== null;
   const gate = canGenerateMap(process, analyzedIds);
-  const failure = generation.failure?.scope === process.id ? generation.failure : null;
   const byId = new Map(sessions.map((s) => [s.id, s]));
   const linkable = sessions.filter((s) => s.analysis);
   const orphaned = process.sessionIds.filter((id) => !byId.get(id)?.analysis);
 
   const toggleSession = (id: string) =>
-    onChange({
-      ...process,
-      sessionIds: process.sessionIds.includes(id) ? process.sessionIds.filter((x) => x !== id) : [...process.sessionIds, id],
-    });
+    onChange((p) => ({
+      ...p,
+      sessionIds: p.sessionIds.includes(id) ? p.sessionIds.filter((x) => x !== id) : [...p.sessionIds, id],
+    }));
 
   return (
     <article className="diag-process" aria-label={`Processo ${process.name}`}>
@@ -114,7 +104,7 @@ function ProcessCard({
           className="grow diag-process-name"
           value={process.name}
           disabled={disabled}
-          onCommit={(v) => onChange({ ...process, name: v.trim() || process.name })}
+          onCommit={(v) => onChange((p) => ({ ...p, name: v.trim() || p.name }))}
         />
         <div className="diag-process-stats">
           {process.stale && <span className="diag-source stale">mapa desatualizado</span>}
@@ -139,7 +129,7 @@ function ProcessCard({
           label="Responsável (área)"
           value={process.owner}
           disabled={disabled}
-          onCommit={(v) => onChange({ ...process, owner: v.trim() || undefined })}
+          onCommit={(v) => onChange((p) => ({ ...p, owner: v.trim() || undefined }))}
         />
         <div className="diag-field">
           <label htmlFor={roleId} className="diag-label">Papel principal</label>
@@ -148,7 +138,10 @@ function ProcessCard({
             className="fb-input"
             value={process.roleId ?? ""}
             disabled={disabled}
-            onChange={(e) => onChange({ ...process, roleId: e.target.value || undefined })}
+            onChange={(e) => {
+              const roleId = e.target.value || undefined;
+              onChange((p) => ({ ...p, roleId }));
+            }}
           >
             <option value="">Sem papel definido</option>
             {engagement.roles.map((r) => (
@@ -160,13 +153,13 @@ function ProcessCard({
           label="Volume mensal (execuções)"
           value={process.volumePerMonth}
           disabled={disabled}
-          onChange={(v) => onChange({ ...process, volumePerMonth: v })}
+          onChange={(u) => onChange((p) => ({ ...p, volumePerMonth: u(p.volumePerMonth) }))}
         />
         <SourcedInput
           label="Pessoas envolvidas"
           value={process.peopleCount}
           disabled={disabled}
-          onChange={(v) => onChange({ ...process, peopleCount: v })}
+          onChange={(u) => onChange((p) => ({ ...p, peopleCount: u(p.peopleCount) }))}
         />
       </div>
 
@@ -194,7 +187,7 @@ function ProcessCard({
           <p className="diag-warn">
             {orphaned.length} {orphaned.length === 1 ? "gravação vinculada não está" : "gravações vinculadas não estão"} mais
             disponíveis com análise.{" "}
-            <button type="button" className="linky" onClick={() => onChange({ ...process, sessionIds: process.sessionIds.filter((id) => !orphaned.includes(id)) })}>
+            <button type="button" className="linky" onClick={() => onChange((p) => ({ ...p, sessionIds: p.sessionIds.filter((id) => !orphaned.includes(id)) }))}>
               Desvincular
             </button>
           </p>
@@ -240,32 +233,15 @@ function ProcessCard({
           </div>
         )}
         {gate.reason && <p className={gate.ok ? "diag-hint" : "diag-warn"}>{gate.reason}</p>}
-        <div className="diag-actions">
-          {thisRunning ? (
-            <>
-              <span className="status-line diag-progress" role="status" aria-live="polite">
-                <span className="spinner" aria-hidden="true" />
-                <span className="status-text">{generation.progress ?? "Gerando mapa…"}</span>
-              </span>
-              <button type="button" className="ghost" onClick={onCancel}>Cancelar</button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="record-cta"
-              disabled={disabled || anyRunning || !gate.ok}
-              onClick={() => onGenerate(feedback.trim())}
-            >
-              {map ? "Regenerar mapa" : "Gerar mapa"}
-            </button>
-          )}
-        </div>
-        {failure && (
-          <div className="diag-error" role="alert">
-            <span>{failure.message}</span>
-            <button type="button" className="ghost" disabled={anyRunning} onClick={failure.retry}>Tentar novamente</button>
-          </div>
-        )}
+        <GenerateControls
+          scope={process.id}
+          generation={generation}
+          label={map ? "Regenerar mapa" : "Gerar mapa"}
+          runningLabel="Gerando mapa…"
+          disabled={disabled || !gate.ok}
+          onGenerate={() => onGenerate(feedback.trim())}
+          onCancel={onCancel}
+        />
       </div>
     </article>
   );
@@ -288,13 +264,13 @@ export function ProcessesSection({
   sessions: SessionSummary[];
   generation: GenerationState;
   disabled: boolean;
-  onChange: (next: Engagement) => void | Promise<void>;
+  onChange: (update: Update<Engagement>) => void;
   onGenerate: (processId: string, feedback: string) => void;
   onCancel: () => void;
 }) {
   const analyzedIds = new Set(sessions.filter((s) => s.analysis).map((s) => s.id));
-  const replace = (next: Process) =>
-    onChange({ ...engagement, processes: engagement.processes.map((p) => (p.id === next.id ? next : p)) });
+  const replace = (id: string, update: Update<Process>) =>
+    onChange((e) => ({ ...e, processes: e.processes.map((p) => (p.id === id ? update(p) : p)) }));
   return (
     <Section
       title="Processos"
@@ -305,10 +281,10 @@ export function ProcessesSection({
           className="ghost"
           disabled={disabled}
           onClick={() =>
-            onChange({
-              ...engagement,
-              processes: [...engagement.processes, { id: newId("proc"), name: "Novo processo", sessionIds: [], stale: false }],
-            })
+            onChange((e) => ({
+              ...e,
+              processes: [...e.processes, { id: newId("proc"), name: "Novo processo", sessionIds: [], stale: false }],
+            }))
           }
         >
           Adicionar processo
@@ -330,8 +306,8 @@ export function ProcessesSection({
               analyzedIds={analyzedIds}
               generation={generation}
               disabled={disabled}
-              onChange={replace}
-              onRemove={() => onChange({ ...engagement, processes: engagement.processes.filter((x) => x.id !== p.id) })}
+              onChange={(u) => replace(p.id, u)}
+              onRemove={() => onChange((e) => ({ ...e, processes: e.processes.filter((x) => x.id !== p.id) }))}
               onGenerate={(fb) => onGenerate(p.id, fb)}
               onCancel={onCancel}
             />

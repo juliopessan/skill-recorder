@@ -3644,7 +3644,7 @@ button:focus-visible,
 .diag-switch button.on {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .diag-head {
@@ -3828,6 +3828,10 @@ select.fb-input {
 .diag-source.stale {
   color: var(--brand-ink);
   background: var(--signal-dim);
+}
+
+.diag-source.none {
+  color: var(--faint);
 }
 
 .diag-source.measured {
@@ -4207,7 +4211,7 @@ select.fb-input {
 .diag-facts {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 8px 16px;
 }
 
@@ -4231,7 +4235,19 @@ select.fb-input {
 }
 
 .diag-inline-btn {
-  margin-left: 8px;
+  margin-left: 0;
+}
+
+.diag-fact-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.diag-field-error {
+  font-size: 11.5px;
+  color: var(--brand-ink);
 }
 
 .diag-prereq {
@@ -4244,7 +4260,11 @@ select.fb-input {
 
 .diag-prereq ul {
   margin: 0;
-  padding-left: 16px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
   color: var(--text);
 }
 

@@ -13,14 +13,15 @@ export function QuestionnaireForm({
 }: {
   questionnaire: DataQuestionnaire;
   disabled: boolean;
-  onChange: (next: DataQuestionnaire) => void | Promise<void>;
+  onChange: (update: (prev: DataQuestionnaire) => DataQuestionnaire) => void;
   onSuggest: () => void | Promise<void>;
   hasMaps: boolean;
 }) {
-  const set = (axis: QuestionnaireAxis, patch: Partial<NonNullable<DataQuestionnaire[QuestionnaireAxis]>>) => {
-    const current = questionnaire[axis] ?? { answer: 1 as const, source: "confirmed" as const, evidence: [] };
-    return onChange({ ...questionnaire, [axis]: { ...current, ...patch } });
-  };
+  const set = (axis: QuestionnaireAxis, patch: Partial<NonNullable<DataQuestionnaire[QuestionnaireAxis]>>) =>
+    onChange((q) => {
+      const current = q[axis] ?? { answer: 1 as const, source: "confirmed" as const, evidence: [] };
+      return { ...q, [axis]: { ...current, ...patch } };
+    });
 
   return (
     <Section
@@ -58,7 +59,7 @@ export function QuestionnaireForm({
                       name={name}
                       value={n}
                       checked={a?.answer === n}
-                      onChange={() => void set(axis, { answer: n, source: "confirmed" })}
+                      onChange={() => set(axis, { answer: n, source: "confirmed" })}
                     />
                     <span className="diag-level-n">{n}</span>
                     <span>{LEVEL_LABELS[n]}</span>
@@ -71,7 +72,7 @@ export function QuestionnaireForm({
                 </ul>
               )}
               {pending && (
-                <button type="button" className="ghost diag-confirm" onClick={() => void set(axis, { source: "confirmed" })}>
+                <button type="button" className="ghost diag-confirm" onClick={() => set(axis, { source: "confirmed" })}>
                   Confirmar resposta
                 </button>
               )}

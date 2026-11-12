@@ -1,9 +1,82 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import type { QuestionnaireAxis, Source } from "../../common/diagnostic";
+import { parseNonNegative } from "../diagnostic-view-state";
 
 export function isError<T>(result: T | { error: string }): result is { error: string } {
   return typeof result === "object" && result !== null && "error" in result && typeof (result as { error: unknown }).error === "string";
+}
+
+export const BRIDGE_FAILED_MESSAGE = "Não foi possível concluir a operação. Tente novamente.";
+
+/** Runs a bridge call and turns a rejected promise into the same `{ error }` shape the bridge returns. */
+export async function safeCall<T>(call: () => Promise<T | { error: string }>): Promise<T | { error: string }> {
+  try {
+    return await call();
+  } catch (error) {
+    console.error("Diagnostic bridge call failed:", error);
+    return { error: BRIDGE_FAILED_MESSAGE };
+  }
+}
+
+export const NUMBER_ERROR = "Informe um número maior ou igual a zero.";
+export const validateNonNegative = (text: string): string | null => (parseNonNegative(text) === null ? NUMBER_ERROR : null);
+
+export interface GenerationState {
+  /** What is running, or null when idle. */
+  running: { kind: "map"; processId: string } | { kind: "opportunities" } | null;
+  progress: string | null;
+  /** Last failure, scoped so "Tentar novamente" shows on the right card. */
+  failure: { scope: string; message: string; retry: () => void } | null;
+}
+
+/** Generate button, or progress + Cancelar while this scope runs; plus the failure with "Tentar novamente". */
+export function GenerateControls({
+  scope,
+  generation,
+  label,
+  runningLabel,
+  disabled,
+  onGenerate,
+  onCancel,
+}: {
+  scope: string;
+  generation: GenerationState;
+  label: string;
+  runningLabel: string;
+  /** Extra reason the button cannot be used (blocked inputs, saving state). */
+  disabled: boolean;
+  onGenerate: () => void;
+  onCancel: () => void;
+}) {
+  const running = generation.running;
+  const thisRunning = running !== null && (running.kind === "map" ? running.processId === scope : scope === "opportunities");
+  const failure = generation.failure?.scope === scope ? generation.failure : null;
+  return (
+    <>
+      <div className="diag-actions">
+        {thisRunning ? (
+          <>
+            <span className="status-line diag-progress" role="status" aria-live="polite">
+              <span className="spinner" aria-hidden="true" />
+              <span className="status-text">{generation.progress ?? runningLabel}</span>
+            </span>
+            <button type="button" className="ghost" onClick={onCancel}>Cancelar</button>
+          </>
+        ) : (
+          <button type="button" className="record-cta" disabled={disabled || running !== null} onClick={onGenerate}>
+            {label}
+          </button>
+        )}
+      </div>
+      {failure && (
+        <div className="diag-error" role="alert">
+          <span>{failure.message}</span>
+          <button type="button" className="ghost" disabled={running !== null} onClick={failure.retry}>Tentar novamente</button>
+        </div>
+      )}
+    </>
+  );
 }
 
 export const AXIS_LABELS: Record<QuestionnaireAxis, { name: string; question: string }> = {
@@ -71,6 +144,7 @@ export function CommitInput({
   className,
   hideLabel,
   placeholder,
+  validate,
 }: {
   label: string;
   value: string | number | undefined;
@@ -82,12 +156,23 @@ export function CommitInput({
   className?: string;
   hideLabel?: boolean;
   placeholder?: string;
+  /** Returns a pt-BR message when the typed text is invalid; the draft then reverts to the stored value. */
+  validate?: (draft: string) => string | null;
 }) {
   const id = useId();
+  const errorId = useId();
+  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState(value === undefined ? "" : String(value));
   useEffect(() => setDraft(value === undefined ? "" : String(value)), [value]);
+  const stored = value === undefined ? "" : String(value);
   const commit = () => {
-    if (draft !== (value === undefined ? "" : String(value))) onCommit(draft);
+    const message = validate?.(draft) ?? null;
+    if (message && draft !== stored) {
+      setError(message);
+      setDraft(stored);
+      return;
+    }
+    if (draft !== stored) onCommit(draft);
   };
   return (
     <div className={`diag-field ${className ?? ""}`}>
@@ -101,12 +186,18 @@ export function CommitInput({
         value={draft}
         disabled={disabled}
         placeholder={placeholder}
-        onChange={(e) => setDraft(e.target.value)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setError(null);
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
       />
+      {error && <span id={errorId} className="diag-field-error" role="alert">{error}</span>}
     </div>
   );
 }

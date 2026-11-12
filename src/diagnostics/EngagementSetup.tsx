@@ -1,13 +1,8 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import type { Engagement } from "../../common/diagnostic";
-import { newId } from "../diagnostic-view-state";
-import { CommitInput, Section } from "./shared";
-
-const parseNumber = (s: string): number => {
-  const n = Number(s.replace(",", "."));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-};
+import { newId, parseNonNegative } from "../diagnostic-view-state";
+import { CommitInput, Section, validateNonNegative } from "./shared";
 
 export function EngagementSetup({
   engagement,
@@ -16,17 +11,19 @@ export function EngagementSetup({
 }: {
   engagement: Engagement;
   disabled: boolean;
-  onChange: (next: Engagement) => void | Promise<void>;
+  onChange: (update: (prev: Engagement) => Engagement) => void;
 }) {
   const thesisId = useId();
+  const [confirmRoleId, setConfirmRoleId] = useState<string | null>(null);
   const setRole = (id: string, patch: Partial<Engagement["roles"][number]>) =>
-    onChange({ ...engagement, roles: engagement.roles.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
+    onChange((e) => ({ ...e, roles: e.roles.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
   const removeRole = (id: string) =>
-    onChange({
-      ...engagement,
-      roles: engagement.roles.filter((r) => r.id !== id),
-      processes: engagement.processes.map((p) => (p.roleId === id ? { ...p, roleId: undefined } : p)),
-    });
+    onChange((e) => ({
+      ...e,
+      roles: e.roles.filter((r) => r.id !== id),
+      processes: e.processes.map((p) => (p.roleId === id ? { ...p, roleId: undefined } : p)),
+    }));
+  const usage = (id: string) => engagement.processes.filter((p) => p.roleId === id).length;
 
   return (
     <>
@@ -36,13 +33,13 @@ export function EngagementSetup({
             label="Nome do cliente"
             value={engagement.clientName}
             disabled={disabled}
-            onCommit={(v) => onChange({ ...engagement, clientName: v.trim() || engagement.clientName })}
+            onCommit={(v) => onChange((e) => ({ ...e, clientName: v.trim() || e.clientName }))}
           />
           <CommitInput
             label="Moeda (código ISO)"
             value={engagement.currency}
             disabled={disabled}
-            onCommit={(v) => onChange({ ...engagement, currency: v.trim().toUpperCase() || engagement.currency })}
+            onCommit={(v) => onChange((e) => ({ ...e, currency: v.trim().toUpperCase() || e.currency }))}
           />
         </div>
         <div className="diag-field">
@@ -54,7 +51,8 @@ export function EngagementSetup({
             key={engagement.thesisText}
             disabled={disabled}
             onBlur={(e) => {
-              if (e.target.value !== engagement.thesisText) void onChange({ ...engagement, thesisText: e.target.value });
+              const text = e.target.value;
+              if (text !== engagement.thesisText) onChange((prev) => ({ ...prev, thesisText: text }));
             }}
           />
         </div>
@@ -69,10 +67,7 @@ export function EngagementSetup({
             className="ghost"
             disabled={disabled}
             onClick={() =>
-              onChange({
-                ...engagement,
-                roles: [...engagement.roles, { id: newId("role"), name: "Novo papel", hourlyCost: 0 }],
-              })
+              onChange((e) => ({ ...e, roles: [...e.roles, { id: newId("role"), name: "Novo papel", hourlyCost: 0 }] }))
             }
           >
             Adicionar papel
@@ -102,12 +97,26 @@ export function EngagementSetup({
                   step={1}
                   value={r.hourlyCost}
                   disabled={disabled}
-                  onCommit={(v) => setRole(r.id, { hourlyCost: parseNumber(v) })}
+                  validate={validateNonNegative}
+                  onCommit={(v) => setRole(r.id, { hourlyCost: parseNonNegative(v) ?? 0 })}
                 />
                 <span className="diag-unit">{engagement.currency}/h</span>
-                <button type="button" className="linky" disabled={disabled} onClick={() => removeRole(r.id)}>
-                  Remover
-                </button>
+                {confirmRoleId === r.id ? (
+                  <span className="diag-inline-confirm" role="alertdialog" aria-label={`Confirmar remoção do papel ${r.name}`}>
+                    {usage(r.id)} {usage(r.id) === 1 ? "processo ficará" : "processos ficarão"} sem papel.
+                    <button type="button" className="linky" onClick={() => setConfirmRoleId(null)}>Cancelar</button>
+                    <button type="button" className="danger" onClick={() => { setConfirmRoleId(null); removeRole(r.id); }}>Remover</button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="linky"
+                    disabled={disabled}
+                    onClick={() => (usage(r.id) > 0 ? setConfirmRoleId(r.id) : removeRole(r.id))}
+                  >
+                    Remover
+                  </button>
+                )}
               </li>
             ))}
           </ul>

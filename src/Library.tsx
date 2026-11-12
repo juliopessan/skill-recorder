@@ -110,7 +110,7 @@ export function Library() {
   const selected = sessions.find((s) => s.id === selectedId) ?? null;
 
   if (view === "diagnostics") {
-    return <Diagnostics switcher={<ViewSwitch view={view} onChange={setView} />} />;
+    return <Diagnostics renderSwitcher={(busy) => <ViewSwitch view={view} onChange={setView} disabled={busy} />} />;
   }
 
   return (

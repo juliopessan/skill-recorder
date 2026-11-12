@@ -71,7 +71,7 @@ export function mergeSuggestedQuestionnaire(current: DataQuestionnaire, suggeste
   return out;
 }
 
-function ordered(opps: Opportunity[]): Opportunity[] {
+export function ordered(opps: Opportunity[]): Opportunity[] {
   return [...opps].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
@@ -93,4 +93,61 @@ export function setOpportunityHidden(opps: Opportunity[], id: string, hidden: bo
 export function newId(prefix: string): string {
   const rand = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   return `${prefix}-${rand.slice(0, 8)}`;
+}
+
+/** Parses a user-typed non-negative number (comma or dot decimals); null when empty or invalid. */
+export function parseNonNegative(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export const SAVE_FAILED_MESSAGE = "Não foi possível salvar as alterações. Tente novamente.";
+
+export interface UpdateQueue<T> {
+  /**
+   * Applies `update` to the latest value (optimistically, synchronously) and saves it after every
+   * earlier save finished. Resolves to an error message, or null when the save succeeded.
+   */
+  enqueue(update: (prev: T) => T): Promise<string | null>;
+  /** Adopts a value loaded from the store, unless local edits are still waiting to be saved. */
+  sync(value: T): void;
+  get(): T;
+  pending(): number;
+}
+
+/**
+ * Serialises edits so none is lost: every updater runs against the newest value (not a render-time
+ * snapshot), and saves go out one at a time. A failed save reports its error but keeps the edits,
+ * so later saves still carry them.
+ */
+export function createUpdateQueue<T>(initial: T, save: (value: T) => Promise<string | null>): UpdateQueue<T> {
+  let current = initial;
+  let pending = 0;
+  let tail: Promise<unknown> = Promise.resolve();
+  return {
+    enqueue(update) {
+      current = update(current);
+      pending++;
+      const run = async (): Promise<string | null> => {
+        let error: string | null;
+        try {
+          error = await save(current);
+        } catch {
+          error = SAVE_FAILED_MESSAGE;
+        }
+        pending--;
+        return error;
+      };
+      const task = tail.then(run, run);
+      tail = task;
+      return task;
+    },
+    sync(value) {
+      if (pending === 0) current = value;
+    },
+    get: () => current,
+    pending: () => pending,
+  };
 }

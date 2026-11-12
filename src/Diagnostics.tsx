@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { DataQuestionnaire, Engagement, Opportunity } from "../common/diagnostic";
+import type { Engagement, Opportunity } from "../common/diagnostic";
 import { DEFAULT_THESIS_TEXT } from "../common/diagnostic-config";
 import type { DiagnosticBundle, SessionSummary } from "../common/ipc";
-import { mergeSuggestedQuestionnaire, nextStep, newId, type DiagnosticStep } from "./diagnostic-view-state";
+import {
+  createUpdateQueue,
+  mergeSuggestedQuestionnaire,
+  newId,
+  nextStep,
+  type DiagnosticStep,
+  type UpdateQueue,
+} from "./diagnostic-view-state";
 import { EngagementList } from "./diagnostics/EngagementList";
 import { EngagementSetup } from "./diagnostics/EngagementSetup";
 import { OpportunityList } from "./diagnostics/OpportunityList";
-import { ProcessesSection, type GenerationState } from "./diagnostics/ProcessPanel";
+import { ProcessesSection } from "./diagnostics/ProcessPanel";
 import { QuestionnaireForm } from "./diagnostics/QuestionnaireForm";
 import { ReportPanel } from "./diagnostics/ReportPanel";
-import { isError } from "./diagnostics/shared";
+import { isError, safeCall, type GenerationState } from "./diagnostics/shared";
 
 const STEP_LABEL: Record<DiagnosticStep, string> = {
   roles: "Defina os papéis e seus custos por hora.",
@@ -24,7 +31,13 @@ const STEP_LABEL: Record<DiagnosticStep, string> = {
 
 const IDLE: GenerationState = { running: null, progress: null, failure: null };
 
-export function Diagnostics({ switcher }: { switcher: ReactNode }) {
+interface Queues {
+  id: string;
+  engagement: UpdateQueue<Engagement>;
+  opportunities: UpdateQueue<Opportunity[]>;
+}
+
+export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean) => ReactNode }) {
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -35,13 +48,18 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
   const [exporting, setExporting] = useState<"html" | "pdf" | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const loadToken = useRef(0);
-  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const alive = useRef(true);
+  const runningRef = useRef(false);
+  const queues = useRef<Queues | null>(null);
   const busy = generation.running !== null;
 
-  const fail = useCallback((message: string) => setNotice(message), []);
+  const fail = useCallback((message: string) => {
+    if (alive.current) setNotice(message);
+  }, []);
 
   const loadList = useCallback(async () => {
-    const res = await window.skillRecorder.listDiagnostics();
+    const res = await safeCall(() => window.skillRecorder.listDiagnostics());
+    if (!alive.current) return;
     if (isError(res)) fail(res.error);
     else setEngagements(res);
     setLoaded(true);
@@ -50,33 +68,63 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
   const loadBundle = useCallback(
     async (id: string) => {
       const token = ++loadToken.current;
-      const res = await window.skillRecorder.getDiagnostic(id);
-      if (token !== loadToken.current) return;
+      const res = await safeCall(() => window.skillRecorder.getDiagnostic(id));
+      if (token !== loadToken.current || !alive.current) return;
       if (isError(res)) {
         setBundle(null);
         fail(res.error);
-      } else setBundle(res);
+        return;
+      }
+      if (queues.current?.id === id) {
+        queues.current.engagement.sync(res.engagement);
+        queues.current.opportunities.sync(res.opportunities);
+      } else {
+        queues.current = {
+          id,
+          engagement: createUpdateQueue(res.engagement, async (value) => {
+            const saved = await safeCall(() => window.skillRecorder.saveDiagnostic(value));
+            return isError(saved) ? saved.error : null;
+          }),
+          opportunities: createUpdateQueue(res.opportunities, async (value) => {
+            const saved = await safeCall(() => window.skillRecorder.saveDiagnosticOpportunities(id, value));
+            return isError(saved) ? saved.error : null;
+          }),
+        };
+      }
+      setBundle(res);
     },
     [fail],
   );
 
   const loadSessions = useCallback(async () => {
     try {
-      setSessions(await window.skillRecorder.listSessions());
+      const list = await window.skillRecorder.listSessions();
+      if (alive.current) setSessions(list);
     } catch (error) {
       console.error("Could not list sessions for diagnostics:", error);
     }
   }, []);
 
   useEffect(() => {
+    alive.current = true;
     void loadList();
     void loadSessions();
     const offSessions = window.skillRecorder.onSessionsChanged(() => { void loadSessions(); });
     const offProgress = window.skillRecorder.onDiagnosticProgress((message) => {
-      setGeneration((g) => (g.running ? { ...g, progress: message } : g));
+      if (alive.current) setGeneration((g) => (g.running ? { ...g, progress: message } : g));
     });
-    return () => { offSessions(); offProgress(); };
+    return () => {
+      alive.current = false;
+      offSessions();
+      offProgress();
+      // Leaving the view must not leave a main-process job running with nobody to receive it.
+      if (runningRef.current) void Promise.resolve(window.skillRecorder.cancelDiagnostic()).catch(() => undefined);
+    };
   }, [loadList, loadSessions]);
+
+  const cancel = useCallback(() => {
+    void Promise.resolve(window.skillRecorder.cancelDiagnostic()).catch(() => fail("Não foi possível cancelar a geração."));
+  }, [fail]);
 
   const select = useCallback(
     (id: string | null) => {
@@ -84,25 +132,41 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
       setBundle(null);
       setExportNotice(null);
       setGeneration(IDLE);
+      queues.current = null;
       if (id) void loadBundle(id);
       else loadToken.current++;
     },
     [loadBundle],
   );
 
-  /** Saves serialise through a queue so quick successive edits cannot overwrite each other. */
-  const persist = useCallback(
-    (next: Engagement): Promise<void> => {
-      const run = async () => {
-        const res = await window.skillRecorder.saveDiagnostic(next);
-        if (isError(res)) fail(res.error);
-        await Promise.all([loadBundle(next.id), loadList()]);
-      };
-      const queued = saveQueue.current.then(run, run);
-      saveQueue.current = queued;
-      return queued;
+  /** After a queued save: surface the error, then refresh so scores and totals stay consistent. */
+  const afterSave = useCallback(
+    async (id: string, error: string | null): Promise<string | null> => {
+      if (!alive.current) return error;
+      if (error) fail(error);
+      if (queues.current?.id === id) await Promise.all([loadBundle(id), loadList()]);
+      return error;
     },
     [fail, loadBundle, loadList],
+  );
+
+  /** Every edit is an updater applied to the newest value, so a click never overwrites a blur-commit. */
+  const persist = useCallback(
+    async (update: (prev: Engagement) => Engagement): Promise<string | null> => {
+      const q = queues.current;
+      if (!q) return null;
+      return afterSave(q.id, await q.engagement.enqueue(update));
+    },
+    [afterSave],
+  );
+
+  const saveOpportunities = useCallback(
+    async (update: (prev: Opportunity[]) => Opportunity[]): Promise<string | null> => {
+      const q = queues.current;
+      if (!q) return null;
+      return afterSave(q.id, await q.opportunities.enqueue(update));
+    },
+    [afterSave],
   );
 
   const create = async (clientName: string) => {
@@ -117,71 +181,79 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
       processes: [],
       thesisText: DEFAULT_THESIS_TEXT,
     };
-    const res = await window.skillRecorder.saveDiagnostic(engagement);
+    const res = await safeCall(() => window.skillRecorder.saveDiagnostic(engagement));
     if (isError(res)) return fail(res.error);
     await loadList();
-    select(res.id);
+    if (alive.current) select(res.id);
   };
 
   const remove = async (id: string) => {
-    const res = await window.skillRecorder.deleteDiagnostic(id);
+    const res = await safeCall(() => window.skillRecorder.deleteDiagnostic(id));
     if (isError(res)) return fail(res.error);
-    if (id === selectedId) select(null);
+    if (alive.current && id === selectedId) select(null);
     await loadList();
-  };
-
-  const saveOpportunities = async (next: Opportunity[]) => {
-    if (!bundle) return;
-    const res = await window.skillRecorder.saveDiagnosticOpportunities(bundle.engagement.id, next);
-    if (isError(res)) fail(res.error);
-    await loadBundle(bundle.engagement.id);
   };
 
   const suggest = async () => {
     if (!bundle) return;
-    const res = await window.skillRecorder.suggestDiagnosticQuestionnaire(bundle.engagement.id);
+    const res = await safeCall(() => window.skillRecorder.suggestDiagnosticQuestionnaire(bundle.engagement.id));
     if (isError(res)) return fail(res.error);
     if (Object.keys(res).length === 0) {
       return fail("Ainda não há passos mapeados para sugerir respostas. Gere ao menos um mapa de processo.");
     }
-    const merged: DataQuestionnaire = mergeSuggestedQuestionnaire(bundle.engagement.dataQuestionnaire, res);
-    await persist({ ...bundle.engagement, dataQuestionnaire: merged });
-    setNotice("Respostas sugeridas a partir das gravações. Revise e confirme cada eixo; Inventário e Governança dependem do cliente.");
+    const error = await persist((e) => ({ ...e, dataQuestionnaire: mergeSuggestedQuestionnaire(e.dataQuestionnaire, res) }));
+    if (error === null && alive.current) {
+      setNotice("Respostas sugeridas a partir das gravações. Revise e confirme cada eixo; Inventário e Governança dependem do cliente.");
+    }
   };
 
-  const generateMap = async (processId: string, feedback: string): Promise<void> => {
-    if (!bundle || busy) return;
+  /** Runs one generation; whatever happens, `running` is cleared so the view never stays locked. */
+  const runGeneration = async (
+    running: NonNullable<GenerationState["running"]>,
+    scope: string,
+    call: (engagementId: string) => Promise<unknown>,
+    retry: () => void,
+  ): Promise<void> => {
+    if (!bundle || runningRef.current) return;
     const id = bundle.engagement.id;
+    runningRef.current = true;
     setNotice(null);
-    setGeneration({ running: { kind: "map", processId }, progress: null, failure: null });
-    const res = await window.skillRecorder.generateDiagnosticMap(id, processId, feedback || undefined);
-    await loadBundle(id);
-    setGeneration(
-      isError(res)
-        ? { running: null, progress: null, failure: { scope: processId, message: res.error, retry: () => void generateMap(processId, feedback) } }
-        : IDLE,
-    );
+    setGeneration({ running, progress: null, failure: null });
+    let failure: GenerationState["failure"] = null;
+    try {
+      // Let any pending edit reach the store before the agent reads it.
+      await queues.current?.engagement.enqueue((prev) => prev);
+      const res = await safeCall(() => call(id) as Promise<{ error: string } | unknown>);
+      if (isError(res)) failure = { scope, message: res.error, retry };
+      if (alive.current) await loadBundle(id);
+    } finally {
+      runningRef.current = false;
+      if (alive.current) setGeneration({ running: null, progress: null, failure });
+    }
   };
 
-  const generateOpportunities = async (feedback: string): Promise<void> => {
-    if (!bundle || busy) return;
-    const id = bundle.engagement.id;
-    setNotice(null);
-    setGeneration({ running: { kind: "opportunities" }, progress: null, failure: null });
-    const res = await window.skillRecorder.generateDiagnosticOpportunities(id, feedback || undefined);
-    await loadBundle(id);
-    setGeneration(
-      isError(res)
-        ? { running: null, progress: null, failure: { scope: "opportunities", message: res.error, retry: () => void generateOpportunities(feedback) } }
-        : IDLE,
+  const generateMap = (processId: string, feedback: string): Promise<void> =>
+    runGeneration(
+      { kind: "map", processId },
+      processId,
+      (id) => window.skillRecorder.generateDiagnosticMap(id, processId, feedback || undefined),
+      () => void generateMap(processId, feedback),
     );
-  };
+
+  const generateOpportunities = (feedback: string): Promise<void> =>
+    runGeneration(
+      { kind: "opportunities" },
+      "opportunities",
+      (id) => window.skillRecorder.generateDiagnosticOpportunities(id, feedback || undefined),
+      () => void generateOpportunities(feedback),
+    );
 
   const exportReport = async (format: "html" | "pdf") => {
     if (!bundle) return;
     setExporting(format);
     setExportNotice(null);
-    const res = await window.skillRecorder.exportDiagnostic(bundle.engagement.id, format);
+    const res = await safeCall(() => window.skillRecorder.exportDiagnostic(bundle.engagement.id, format));
+    if (!alive.current) return;
     setExporting(null);
     if (isError(res)) fail(res.error);
     else if ("path" in res) setExportNotice(`Relatório salvo em ${res.path}`);
@@ -189,11 +261,12 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
 
   const e = bundle?.engagement;
   const step = bundle ? nextStep(bundle.engagement, bundle.maps, bundle.opportunities) : null;
+  const hasMaps = bundle ? Object.keys(bundle.maps).length > 0 : false;
 
   return (
     <div className="lib">
       <aside className="lib-list">
-        <div className="lib-list-head diag-head">{switcher}</div>
+        <div className="lib-list-head diag-head">{renderSwitcher(busy)}</div>
         {notice && (
           <button type="button" className="sess-notice" onClick={() => setNotice(null)} title="Dispensar">
             {notice}
@@ -217,7 +290,7 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
               <h1 className="diag-h1">{e.clientName}</h1>
               <p className="diag-next"><strong>Próximo passo:</strong> {STEP_LABEL[step]}</p>
             </header>
-            <EngagementSetup engagement={e} disabled={busy} onChange={persist} />
+            <EngagementSetup engagement={e} disabled={busy} onChange={(u) => void persist(u)} />
             <ProcessesSection
               engagement={e}
               report={bundle.report.processes}
@@ -225,15 +298,15 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
               sessions={sessions}
               generation={generation}
               disabled={busy}
-              onChange={persist}
+              onChange={(u) => void persist(u)}
               onGenerate={(pid, fb) => void generateMap(pid, fb)}
-              onCancel={() => void window.skillRecorder.cancelDiagnostic()}
+              onCancel={cancel}
             />
             <QuestionnaireForm
               questionnaire={e.dataQuestionnaire}
               disabled={busy}
-              hasMaps={Object.keys(bundle.maps).length > 0}
-              onChange={(q) => persist({ ...e, dataQuestionnaire: q })}
+              hasMaps={hasMaps}
+              onChange={(u) => void persist((prev) => ({ ...prev, dataQuestionnaire: u(prev.dataQuestionnaire) }))}
               onSuggest={suggest}
             />
             <OpportunityList
@@ -241,13 +314,13 @@ export function Diagnostics({ switcher }: { switcher: ReactNode }) {
               report={bundle.report.opportunities}
               currency={e.currency}
               processNames={Object.fromEntries(e.processes.map((p) => [p.id, p.name]))}
-              hasMaps={Object.keys(bundle.maps).length > 0}
+              hasMaps={hasMaps}
               generation={generation}
               disabled={busy}
               savingsAreEstimates={bundle.report.savingsAreEstimates}
-              onSave={saveOpportunities}
+              onSave={(u) => void saveOpportunities(u)}
               onGenerate={(fb) => void generateOpportunities(fb)}
-              onCancel={() => void window.skillRecorder.cancelDiagnostic()}
+              onCancel={cancel}
             />
             <ReportPanel
               report={bundle.report}
