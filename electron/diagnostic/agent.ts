@@ -10,6 +10,7 @@ import {
   loadEngagement,
   loadProcessMap,
   refreshStale,
+  saveInitiatives,
   saveOpportunities,
   saveProcessMap,
 } from "./store";
@@ -107,6 +108,10 @@ export class DiagnosticAgent {
 
       const opps: Opportunity[] = submission.opportunities.map((o, order) => ({ ...o, hidden: false, order }));
       saveOpportunities(engagementId, opps);
+      saveInitiatives(engagementId, {
+        enablement: submission.enablement.map((x, order) => ({ ...x, hidden: false, order })),
+        expansion: submission.expansion.map((x, order) => ({ ...x, hidden: false, order })),
+      });
       onProgress?.("Oportunidades prontas.");
       return opps;
     });

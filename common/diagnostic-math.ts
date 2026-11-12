@@ -1,4 +1,4 @@
-import { DIAGNOSTIC_CONFIG } from "./diagnostic-config";
+import { DIAGNOSTIC_CONFIG, MATURITY_LEVELS } from "./diagnostic-config";
 import type {
   DataQuestionnaire,
   Engagement,
@@ -116,4 +116,29 @@ export function aggregateSavings(opps: Opportunity[], maps: Record<string, Proce
     }
   }
   return money([...best.values()].reduce((a, b) => a + b, 0));
+}
+
+export interface AiMaturity {
+  level: number;
+  name: string;
+  nextLevel: { level: number; name: string; pointsNeeded: number } | null;
+}
+
+/** AI maturity level (1–5) from the AI readiness score; points needed to reach the next level. */
+export function aiMaturity(aiScore: number): AiMaturity {
+  const s = Number.isFinite(aiScore) ? aiScore : 0;
+  let idx = 0;
+  MATURITY_LEVELS.forEach((l, i) => { if (s >= l.min) idx = i; });
+  const cur = MATURITY_LEVELS[idx]!;
+  const next = MATURITY_LEVELS[idx + 1];
+  return {
+    level: cur.level,
+    name: cur.name,
+    nextLevel: next ? { level: next.level, name: next.name, pointsNeeded: Math.max(0, Math.ceil(next.min - s)) } : null,
+  };
+}
+
+/** The dimension holding AI readiness back; ties go to "dados". */
+export function weakestDimension(processScoreValue: number, dataScoreValue: number): "processos" | "dados" {
+  return processScoreValue < dataScoreValue ? "processos" : "dados";
 }

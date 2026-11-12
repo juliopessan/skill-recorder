@@ -6,8 +6,10 @@ import {
   draftReasons,
   isQuickWin,
   prerequisitePath,
+  squadByWave,
   suggestQuestionnaire,
   validateOpportunities,
+  validateSquadSize,
 } from "./diagnostic-rules";
 
 const opp = (id: string, over: Partial<Opportunity> = {}): Opportunity => ({
@@ -162,4 +164,42 @@ test("suggestQuestionnaire inverts buckets for manual transfer and rework", () =
 
 test("suggestQuestionnaire with no steps suggests nothing", () => {
   assert.deepEqual(suggestQuestionnaire([]), {});
+});
+
+const squad = (roles: string[]) => ({ roles, weeks: 1 });
+
+test("squadByWave merges roles case-insensitively per wave, keeping the first spelling", () => {
+  const r = squadByWave([
+    opp("A", { wave: 1, suggestedSquad: squad(["Analista de dados", "PO"]) }),
+    opp("B", { wave: 1, suggestedSquad: squad(["analista de dados ", "Engenheiro"]) }),
+    opp("C", { wave: 2, suggestedSquad: squad(["PO"]) }),
+    opp("H", { wave: 2, hidden: true, suggestedSquad: squad(["Oculto"]) }),
+  ]);
+  assert.deepEqual(r, [
+    { wave: 1, roles: ["Analista de dados", "PO", "Engenheiro"] },
+    { wave: 2, roles: ["PO"] },
+    { wave: 3, roles: [] },
+  ]);
+});
+
+test("validateSquadSize accepts duplicates written differently as one person", () => {
+  assert.deepEqual(
+    validateSquadSize([
+      opp("A", { suggestedSquad: squad(["Analista de dados", "a", "b", "c"]) }),
+      opp("B", { suggestedSquad: squad(["analista de dados ", "c", "d"]) }),
+    ]),
+    { ok: true },
+  );
+});
+
+test("validateSquadSize rejects a wave needing 6 distinct roles and an opportunity with 6 roles", () => {
+  const wave = validateSquadSize([
+    opp("A", { wave: 2, suggestedSquad: squad(["a", "b", "c"]) }),
+    opp("B", { wave: 2, suggestedSquad: squad(["d", "e", "f"]) }),
+  ]);
+  assert.equal(wave.ok, false);
+  if (!wave.ok) assert.match(wave.error, /onda 2.*6.*5/i);
+  const one = validateSquadSize([opp("A", { suggestedSquad: squad(["a", "b", "c", "d", "e", "f"]) })]);
+  assert.equal(one.ok, false);
+  if (!one.ok) assert.match(one.error, /"A"/);
 });

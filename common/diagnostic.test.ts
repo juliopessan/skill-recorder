@@ -3,6 +3,9 @@ import test from "node:test";
 
 import {
   EngagementSchema,
+  EnablementSchema,
+  ExpansionSchema,
+  OpportunitiesSubmissionSchema,
   OpportunitySchema,
   QuestionnaireAnswerSchema,
 } from "./diagnostic";
@@ -56,4 +59,34 @@ test("OpportunitySchema rejects savings pct outside [0,1]", () => {
   assert.throws(() =>
     OpportunitySchema.parse({ ...baseOpp, estimatedSavingsPct: { value: -0.1, source: "measured" } }),
   );
+});
+
+test("OpportunitySchema rejects a squad of 6 roles", () => {
+  const roles = ["a", "b", "c", "d", "e"];
+  assert.equal(OpportunitySchema.parse({ ...baseOpp, suggestedSquad: { roles, weeks: 1 } }).suggestedSquad.roles.length, 5);
+  assert.throws(() => OpportunitySchema.parse({ ...baseOpp, suggestedSquad: { roles: [...roles, "f"], weeks: 1 } }));
+});
+
+const baseEnablement = {
+  id: "c1", title: "Letramento em IA", format: "letramento", audience: "Liderança",
+  gap: "ia", rationale: "r", durationDays: 2, order: 0,
+};
+
+test("EnablementSchema defaults hidden and bounds durationDays", () => {
+  assert.equal(EnablementSchema.parse(baseEnablement).hidden, false);
+  assert.throws(() => EnablementSchema.parse({ ...baseEnablement, durationDays: 0 }));
+  assert.throws(() => EnablementSchema.parse({ ...baseEnablement, durationDays: 21 }));
+  assert.throws(() => EnablementSchema.parse({ ...baseEnablement, format: "palestra" }));
+});
+
+test("ExpansionSchema requires evidence", () => {
+  const x = { id: "x1", area: "Compras", rationale: "r", evidence: ["SAP aparece em 3 gravações"], relatedApps: ["SAP"], order: 0 };
+  assert.equal(ExpansionSchema.parse(x).hidden, false);
+  assert.throws(() => ExpansionSchema.parse({ ...x, evidence: [] }));
+});
+
+test("OpportunitiesSubmissionSchema defaults enablement and expansion to []", () => {
+  const s = OpportunitiesSubmissionSchema.parse({ opportunities: [] });
+  assert.deepEqual(s.enablement, []);
+  assert.deepEqual(s.expansion, []);
 });

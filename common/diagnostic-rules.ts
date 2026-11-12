@@ -6,6 +6,7 @@ import type {
   QuestionnaireAnswer,
   QuestionnaireAxis,
 } from "./diagnostic";
+import { MAX_SQUAD_SIZE } from "./diagnostic-config";
 import { observedStructuredRatio } from "./diagnostic-math";
 
 export type ValidationResult = { ok: true } | { ok: false; error: string };
@@ -124,4 +125,42 @@ export function suggestQuestionnaire(maps: ProcessMap[]): DataQuestionnaire {
     access: answer(manual, "dos passos exigem transferência manual de dados", true),
     quality: answer(rework, "dos passos envolvem retrabalho", true),
   };
+}
+
+const roleKey = (r: string): string => r.trim().toLowerCase();
+
+function distinctRoles(roles: string[], into: Map<string, string> = new Map()): Map<string, string> {
+  for (const raw of roles) {
+    const name = raw.trim();
+    if (name && !into.has(roleKey(name))) into.set(roleKey(name), name);
+  }
+  return into;
+}
+
+/** Distinct roles (case-insensitive, trimmed, first spelling kept) per wave among visible opportunities. */
+export function squadByWave(opps: Opportunity[]): { wave: 1 | 2 | 3; roles: string[] }[] {
+  return ([1, 2, 3] as const).map((wave) => {
+    const m = new Map<string, string>();
+    for (const o of opps) if (!o.hidden && o.wave === wave) distinctRoles(o.suggestedSquad.roles, m);
+    return { wave, roles: [...m.values()] };
+  });
+}
+
+/** Squads hold at most MAX_SQUAD_SIZE people, per opportunity and per wave. */
+export function validateSquadSize(opps: Opportunity[]): ValidationResult {
+  for (const o of opps) {
+    const n = distinctRoles(o.suggestedSquad.roles).size;
+    if (n > MAX_SQUAD_SIZE) {
+      return { ok: false, error: `A oportunidade "${o.id}" pede um squad de ${n} pessoas; o máximo é ${MAX_SQUAD_SIZE}.` };
+    }
+  }
+  for (const w of squadByWave(opps)) {
+    if (w.roles.length > MAX_SQUAD_SIZE) {
+      return {
+        ok: false,
+        error: `A onda ${w.wave} precisa de ${w.roles.length} perfis distintos (${w.roles.join(", ")}); o máximo por onda é ${MAX_SQUAD_SIZE} pessoas. Reaproveite perfis entre oportunidades da mesma onda.`,
+      };
+    }
+  }
+  return { ok: true };
 }

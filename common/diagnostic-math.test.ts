@@ -4,6 +4,7 @@ import test from "node:test";
 import type { DataQuestionnaire, Engagement, Opportunity, Process, ProcessMap, ProcessMapStep, Role } from "./diagnostic";
 import {
   aggregateSavings,
+  aiMaturity,
   aiReadinessScore,
   dataScore,
   observedStructuredRatio,
@@ -13,6 +14,7 @@ import {
   processMonthlyCost,
   processScore,
   stepMonthlyCost,
+  weakestDimension,
 } from "./diagnostic-math";
 
 const step = (id: string, ms: number | null, over: Partial<ProcessMapStep> = {}): ProcessMapStep => ({
@@ -171,4 +173,21 @@ test("overallProcessScore is the integer mean of per-process scores", () => {
   const b = mkMap([step("a", 1)], 0); // 100
   assert.equal(overallProcessScore([a, b]), 90);
   assert.equal(overallProcessScore([]), 0);
+});
+
+test("aiMaturity maps the AI readiness score to five levels", () => {
+  assert.deepEqual(aiMaturity(0), { level: 1, name: "Inicial", nextLevel: { level: 2, name: "Exploratório", pointsNeeded: 20 } });
+  assert.equal(aiMaturity(40).level, 3);
+  assert.equal(aiMaturity(40).name, "Estruturado");
+  assert.deepEqual(aiMaturity(80), { level: 5, name: "Nativo em IA", nextLevel: null });
+  assert.deepEqual(aiMaturity(79).nextLevel, { level: 5, name: "Nativo em IA", pointsNeeded: 1 });
+  assert.equal(aiMaturity(79).level, 4);
+  assert.equal(aiMaturity(100).level, 5);
+  assert.equal(aiMaturity(-5).level, 1);
+});
+
+test("weakestDimension picks the lower score; ties go to dados", () => {
+  assert.equal(weakestDimension(30, 60), "processos");
+  assert.equal(weakestDimension(60, 30), "dados");
+  assert.equal(weakestDimension(50, 50), "dados");
 });

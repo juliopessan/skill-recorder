@@ -232,3 +232,51 @@ test("submit_process_map: agent may omit medianDurationMs", async () => {
   assert.ok(!isFailure(r), text(r));
   assert.equal(got[0].steps[0].medianDurationMs, 250);
 });
+
+test("submit_opportunities: a wave needing 6 distinct roles is rejected with text for the agent", async () => {
+  const { tools, got } = oppTools();
+  const r = await invoke(tools, "submit_opportunities", {
+    opportunities: [
+      opp("o1", { suggestedSquad: { roles: ["a", "b", "c"], weeks: 1 } }),
+      opp("o2", { suggestedSquad: { roles: ["d", "e", "f"], weeks: 1 } }),
+    ],
+  });
+  assert.ok(isFailure(r));
+  assert.match(text(r), /submit_opportunities rejeitado/);
+  assert.match(text(r), /5/);
+  assert.equal(got.length, 0);
+});
+
+test("submit_opportunities: enablement and expansion are validated and passed through", async () => {
+  const { tools, got } = oppTools();
+  const enablement = [{ id: "c1", title: "Letramento", format: "letramento", audience: "Liderança", gap: "ia", rationale: "r", durationDays: 2 }];
+  const expansion = [{ id: "x1", area: "Compras", rationale: "r", evidence: ["SAP visto"], relatedApps: ["SAP"] }];
+  const bad = await invoke(tools, "submit_opportunities", { opportunities: [opp("o1")], enablement: [{ ...enablement[0], format: "palestra" }] });
+  assert.ok(isFailure(bad));
+  assert.match(text(bad), /enablement\.0\.format/);
+  const ok = await invoke(tools, "submit_opportunities", { opportunities: [opp("o1")], enablement, expansion });
+  assert.ok(!isFailure(ok), text(ok));
+  assert.equal(got.length, 1);
+  const sub = got[0] as { enablement: unknown[]; expansion: unknown[] };
+  assert.equal(sub.enablement.length, 1);
+  assert.equal(sub.expansion.length, 1);
+});
+
+test("get_diagnostic_context returns the three scores and observed apps, still no money", async () => {
+  const tools = buildOpportunityTools({
+    engagement,
+    maps: { p1: { ...pmap, steps: [{ ...pmap.steps[0]!, apps: ["SAP", "Excel"] }] } },
+    onSubmit: () => undefined,
+  });
+  const ctx = JSON.parse(text(await invoke(tools, "get_diagnostic_context")));
+  assert.deepEqual(Object.keys(ctx.scores).sort(), ["ai", "data", "process"]);
+  assert.deepEqual(ctx.processes[0].observedApps, ["Excel", "SAP"]);
+  assert.ok(!JSON.stringify(ctx).includes("123.45"));
+});
+
+test("instructions: squad cap, enablement and expansion rules", () => {
+  assert.match(OPPORTUNITY_INSTRUCTIONS, /5 pessoas/);
+  assert.match(OPPORTUNITY_INSTRUCTIONS, /enablement/);
+  assert.match(OPPORTUNITY_INSTRUCTIONS, /expansion/);
+  assert.match(OPPORTUNITY_INSTRUCTIONS, /letramento em IA/i);
+});

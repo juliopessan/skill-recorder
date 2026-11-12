@@ -1,7 +1,7 @@
 import type { Analysis, AnalysisFeedback, AnalysisStep, Confidence } from "./analysis";
 import type { AutomationPlan, BuiltAutomation } from "./automation";
 import type { DiagnosticReport } from "./diagnostic-report";
-import type { DataQuestionnaire, Engagement, Opportunity, ProcessMap } from "./diagnostic";
+import type { DataQuestionnaire, Engagement, Initiatives, Opportunity, ProcessMap } from "./diagnostic";
 import type { MicrophoneDevice } from "./microphone";
 import type { NarrationLanguage } from "./narration";
 import type { ScreenSource } from "./screen";
@@ -531,6 +531,7 @@ export const IPC = {
   diagnosticGet: "diagnostic:get",
   diagnosticSave: "diagnostic:save",
   diagnosticSaveOpportunities: "diagnostic:save-opportunities",
+  diagnosticSaveInitiatives: "diagnostic:save-initiatives",
   diagnosticDelete: "diagnostic:delete",
   diagnosticSuggestQuestionnaire: "diagnostic:suggest-questionnaire",
   diagnosticGenerateMap: "diagnostic:generate-map",
@@ -547,6 +548,7 @@ export interface DiagnosticBundle {
   engagement: Engagement;
   maps: Record<string, ProcessMap>;
   opportunities: Opportunity[];
+  initiatives: Initiatives;
   report: DiagnosticReport;
 }
 
@@ -701,6 +703,7 @@ export interface SkillRecorderApi {
   getDiagnostic(id: string): Promise<DiagnosticResult<DiagnosticBundle>>;
   saveDiagnostic(engagement: unknown): Promise<DiagnosticResult<Engagement>>;
   saveDiagnosticOpportunities(engagementId: string, opportunities: unknown): Promise<DiagnosticResult<Opportunity[]>>;
+  saveDiagnosticInitiatives(engagementId: string, initiatives: unknown): Promise<DiagnosticResult<Initiatives>>;
   deleteDiagnostic(id: string): Promise<DiagnosticResult<{ ok: true }>>;
   suggestDiagnosticQuestionnaire(engagementId: string): Promise<DiagnosticResult<DataQuestionnaire>>;
   generateDiagnosticMap(engagementId: string, processId: string, feedback?: string): Promise<DiagnosticResult<ProcessMap>>;

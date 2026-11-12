@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import {
   EngagementSchema,
+  InitiativesSchema,
   OpportunitySchema,
   type Engagement,
   type Opportunity,
@@ -21,10 +22,12 @@ import {
   deleteEngagement,
   listEngagements,
   loadEngagement,
+  loadInitiatives,
   loadOpportunities,
   loadProcessMap,
   refreshStale,
   saveEngagement,
+  saveInitiatives,
   saveOpportunities,
 } from "./store";
 
@@ -58,8 +61,9 @@ export function registerDiagnosticIpc(
       if (changed) saveEngagement(engagement);
       const maps = loadMaps(engagement);
       const opportunities = loadOpportunities(engagement.id);
+      const initiatives = loadInitiatives(engagement.id);
       const report = buildReportModel(engagement, maps, opportunities, Date.now());
-      return { engagement, maps, opportunities, report };
+      return { engagement, maps, opportunities, initiatives, report };
     }),
   );
 
@@ -79,6 +83,15 @@ export function registerDiagnosticIpc(
       if (!check.ok) throw new Error(check.error);
       saveOpportunities(engagementId, opps);
       return opps;
+    }),
+  );
+
+  ipcMain.handle(IPC.diagnosticSaveInitiatives, (_e, engagementId: string, payload: unknown) =>
+    safely(() => {
+      requireEngagement(engagementId);
+      const initiatives = InitiativesSchema.parse(payload);
+      saveInitiatives(engagementId, initiatives);
+      return initiatives;
     }),
   );
 

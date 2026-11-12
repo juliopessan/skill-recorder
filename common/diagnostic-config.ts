@@ -22,3 +22,15 @@ export const DEFAULT_THESIS_TEXT =
   "Automatizar um processo mal definido ou alimentado por dados desorganizados apenas acelera o caos. " +
   "Este diagnóstico mede a maturidade de processos e de dados da organização e prioriza as oportunidades " +
   "em ondas, começando pelo que já pode ser entregue hoje e preparando o terreno para o restante.";
+
+/** Maximum people in a squad: per opportunity and per wave (distinct roles). */
+export const MAX_SQUAD_SIZE = 5;
+
+/** AI maturity levels; `min` is the inclusive lower bound of the AI readiness score. */
+export const MATURITY_LEVELS = [
+  { level: 1, name: "Inicial", min: 0 },
+  { level: 2, name: "Exploratório", min: 20 },
+  { level: 3, name: "Estruturado", min: 40 },
+  { level: 4, name: "Escalável", min: 60 },
+  { level: 5, name: "Nativo em IA", min: 80 },
+] as const;

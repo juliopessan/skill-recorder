@@ -24,9 +24,12 @@ Fluxo:
    - Onda 2: automação (integrações, RPA, fluxos determinísticos).
    - Onda 3: IA (classificação, extração, geração, apoio à decisão). Toda oportunidade de onda 3 DEVE listar em prerequisites ao menos uma oportunidade de onda 1 ou 2 (os dados e a automação de que ela depende).
 3. Cada oportunidade referencia um processId existente e stepIds existentes no mapa desse processo. Defina wave, prerequisites (ids de outras oportunidades, sem ciclos), effort (S/M/L), risk (low/medium/high), estimatedSavingsPct (fração de 0 a 1 do tempo do processo, source "ai-suggested"), rationale e suggestedSquad (papéis e semanas).
-4. Chame submit_opportunities uma única vez. Se retornar erro, corrija e chame novamente.
+4. Squads: no máximo 5 pessoas por oportunidade E no máximo 5 perfis distintos somando todas as oportunidades de uma mesma onda. Reaproveite os mesmos perfis (com a mesma grafia) entre oportunidades da onda.
+5. Capacitação (enablement): proponha de 2 a 5 itens (format: treinamento, workshop, letramento ou mentoria) ligados às lacunas mais fracas dos scores. Exemplos: score de dados baixo → workshop de governança de dados; prontidão para IA baixa → letramento em IA para liderança; score de processos baixo → treinamento em padronização de processos. Informe público-alvo (audience), gap (processos, dados ou ia), rationale e durationDays (até 20).
+6. Novas frentes (expansion): proponha de 0 a 5 áreas do cliente para o próximo ciclo, sempre baseadas em apps ou passagens de bastão (handoffs) vistos nas gravações (observedApps, passos dos mapas) mas ainda não mapeados como processo. Cite a evidência concreta em evidence e os apps em relatedApps. Não invente frentes sem evidência.
+7. Chame submit_opportunities uma única vez com opportunities, enablement e expansion. Se retornar erro, corrija e chame novamente.
 
 Regras:
-- Nunca produza valores monetários, custos ou moeda; apenas percentuais, esforço e prazos.
+- Nunca produza valores monetários, custos ou moeda; apenas percentuais, esforço e prazos. Capacitação e novas frentes nunca têm valor monetário.
 - Escreva todos os textos em português do Brasil (pt-BR).
 - Use apenas as ferramentas fornecidas.`;

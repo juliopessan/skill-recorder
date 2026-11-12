@@ -9,7 +9,7 @@ import type { Tool } from "@github/copilot-sdk";
 
 import type { Engagement } from "../../common/diagnostic";
 import { DiagnosticAgent, shouldPersist } from "./agent";
-import { loadProcessMap, saveEngagement } from "./store";
+import { loadInitiatives, loadOpportunities, loadProcessMap, saveEngagement, saveProcessMap } from "./store";
 
 test("shouldPersist requires a submission and no cancel", () => {
   assert.equal(shouldPersist({ submitted: true, cancelled: false }), true);
@@ -73,5 +73,53 @@ test("cancel between turn completion and save leaves the stored map untouched", 
   await withDirs(async () => {
     await assert.rejects(new FakeAgent(true).generateMap("eng1", "p1"), /cancelada/);
     assert.equal(loadProcessMap("eng1", "p1"), null);
+  });
+});
+
+class FakeOppAgent extends DiagnosticAgent {
+  constructor(private readonly args: unknown, private readonly cancelAfterSubmit = false) { super(); }
+  protected override async runTurn(_i: string, tools: Tool[]): Promise<void> {
+    const submit = tools.find((t) => t.name === "submit_opportunities")!;
+    await submit.handler!(this.args, { sessionId: "t", toolCallId: "t", toolName: "submit_opportunities", arguments: this.args });
+    if (this.cancelAfterSubmit) this.cancel();
+  }
+}
+
+const oppArgs = (roles: string[]) => ({
+  opportunities: [{
+    id: "o1", title: "T", processId: "p1", stepIds: ["m1"], wave: 1, prerequisites: [],
+    estimatedSavingsPct: { value: 0.2, source: "ai-suggested" }, effort: "S", risk: "low", rationale: "r",
+    suggestedSquad: { roles, weeks: 1 },
+  }],
+  enablement: [
+    { id: "c1", title: "Letramento", format: "letramento", audience: "Liderança", gap: "ia", rationale: "r", durationDays: 1 },
+    { id: "c2", title: "Workshop", format: "workshop", audience: "TI", gap: "dados", rationale: "r", durationDays: 2 },
+  ],
+  expansion: [{ id: "x1", area: "Compras", rationale: "r", evidence: ["e"], relatedApps: [] }],
+});
+
+const saveMap = () => saveProcessMap("eng1", {
+  version: 1, processId: "p1", revision: 1, createdAt: 1, confidence: "high", variants: [],
+  steps: [{ id: "m1", title: "P", medianDurationMs: 1, apps: [], dataArtifacts: [], dataStructure: "structured", manualTransfer: false, rework: false, sourceStepRefs: [] }],
+});
+
+test("generateOpportunities saves opportunities and initiatives with hidden:false and order=index", async () => {
+  await withDirs(async () => {
+    saveMap();
+    await new FakeOppAgent(oppArgs(["Dev"])).generateOpportunities("eng1");
+    assert.equal(loadOpportunities("eng1").length, 1);
+    const i = loadInitiatives("eng1");
+    assert.deepEqual(i.enablement.map((x) => [x.id, x.hidden, x.order]), [["c1", false, 0], ["c2", false, 1]]);
+    assert.deepEqual(i.expansion.map((x) => [x.id, x.hidden, x.order]), [["x1", false, 0]]);
+  });
+});
+
+test("generateOpportunities saves nothing when the squad is too large or the run is cancelled", async () => {
+  await withDirs(async () => {
+    saveMap();
+    await assert.rejects(new FakeOppAgent(oppArgs(["a", "b", "c", "d", "e", "f"])).generateOpportunities("eng1"));
+    await assert.rejects(new FakeOppAgent(oppArgs(["Dev"]), true).generateOpportunities("eng1"), /cancelada/);
+    assert.deepEqual(loadOpportunities("eng1"), []);
+    assert.deepEqual(loadInitiatives("eng1"), { enablement: [], expansion: [] });
   });
 });

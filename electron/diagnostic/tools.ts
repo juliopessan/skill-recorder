@@ -11,7 +11,8 @@ import {
   type ProcessMap,
   type ProcessMapSubmission,
 } from "../../common/diagnostic";
-import { validateOpportunities } from "../../common/diagnostic-rules";
+import { aiReadinessScore, dataScore, overallProcessScore } from "../../common/diagnostic-math";
+import { validateOpportunities, validateSquadSize } from "../../common/diagnostic-rules";
 
 export type LinkedAnalysis = { sessionId: string; analysis: Analysis };
 type StepRef = { sessionId: string; stepId: string };
@@ -207,13 +208,17 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
   const getContext: Tool = {
     name: "get_diagnostic_context",
     description:
-      "Retorna o contexto do diagnóstico: processos, mapas de processo, questionário de dados, papéis (sem valores monetários) e a tese do cliente.",
+      "Retorna o contexto do diagnóstico: processos (com os apps observados nas gravações), mapas de processo, questionário de dados, papéis (sem valores monetários), os três scores (processos, dados, prontidão para IA) e a tese do cliente.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
     handler: () => {
       const e = ctx.engagement;
+      const maps = Object.values(ctx.maps);
+      const process = overallProcessScore(maps);
+      const data = dataScore(e.dataQuestionnaire, maps);
       return JSON.stringify(
         {
           clientName: e.clientName,
+          scores: { process, data, ai: aiReadinessScore(process, data) },
           thesisText: e.thesisText,
           roles: e.roles.map((r) => ({ id: r.id, name: r.name })),
           dataQuestionnaire: e.dataQuestionnaire,
@@ -224,6 +229,7 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
             roleId: p.roleId,
             volumePerMonth: p.volumePerMonth,
             peopleCount: p.peopleCount,
+            observedApps: [...new Set((ctx.maps[p.id]?.steps ?? []).flatMap((s) => s.apps))].sort(),
             map: ctx.maps[p.id] ?? null,
           })),
         },
@@ -236,7 +242,7 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
   const submitOpportunities: Tool = {
     name: "submit_opportunities",
     description:
-      "Envie a lista final de oportunidades. Ordem obrigatória: dados (onda 1) → automação (onda 2) → IA (onda 3); toda oportunidade de onda 3 deve listar ao menos um pré-requisito de onda inferior. Chame uma única vez quando estiver confiante.",
+      "Envie a lista final de oportunidades, a capacitação (enablement) e as novas frentes (expansion). Ordem obrigatória: dados (onda 1) → automação (onda 2) → IA (onda 3); toda oportunidade de onda 3 deve listar ao menos um pré-requisito de onda inferior. Squads de no máximo 5 pessoas por oportunidade e por onda (perfis distintos). Chame uma única vez quando estiver confiante.",
     parameters: {
       type: "object",
       properties: {
@@ -265,7 +271,10 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
               rationale: { type: "string" },
               suggestedSquad: {
                 type: "object",
-                properties: { roles: { type: "array", items: { type: "string" } }, weeks: { type: "number" } },
+                properties: {
+                  roles: { type: "array", items: { type: "string" }, maxItems: 5, description: "Até 5 perfis; a onda inteira também tem no máximo 5 perfis distintos." },
+                  weeks: { type: "number" },
+                },
                 required: ["roles", "weeks"],
                 additionalProperties: false,
               },
@@ -274,6 +283,40 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
               "id", "title", "processId", "stepIds", "wave", "estimatedSavingsPct",
               "effort", "risk", "rationale", "suggestedSquad",
             ],
+            additionalProperties: false,
+          },
+        },
+        enablement: {
+          type: "array",
+          description: "2 a 5 itens de capacitação ligados às lacunas mais fracas.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              title: { type: "string" },
+              format: { type: "string", enum: ["treinamento", "workshop", "letramento", "mentoria"] },
+              audience: { type: "string", description: "Público-alvo, ex.: liderança, TI, analistas." },
+              gap: { type: "string", enum: ["processos", "dados", "ia"] },
+              rationale: { type: "string" },
+              durationDays: { type: "number", description: "Dias de duração, maior que 0 e até 20." },
+            },
+            required: ["id", "title", "format", "audience", "gap", "rationale", "durationDays"],
+            additionalProperties: false,
+          },
+        },
+        expansion: {
+          type: "array",
+          description: "0 a 5 novas frentes no cliente, baseadas em apps/handoffs vistos nas gravações e ainda não mapeados.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              area: { type: "string" },
+              rationale: { type: "string" },
+              evidence: { type: "array", items: { type: "string" }, minItems: 1 },
+              relatedApps: { type: "array", items: { type: "string" } },
+            },
+            required: ["id", "area", "rationale", "evidence"],
             additionalProperties: false,
           },
         },
@@ -289,6 +332,8 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
       );
       const valid = validateOpportunities(full);
       if (!valid.ok) return failure(`submit_opportunities rejeitado — ${valid.error}`);
+      const squad = validateSquadSize(full);
+      if (!squad.ok) return failure(`submit_opportunities rejeitado — ${squad.error}`);
       const byId = new Map(full.map((o) => [o.id, o]));
       for (const o of full) {
         const proc = ctx.engagement.processes.find((p) => p.id === o.processId);

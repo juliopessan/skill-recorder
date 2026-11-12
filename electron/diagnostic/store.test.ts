@@ -12,10 +12,12 @@ import {
   linkedAnalyses,
   listEngagements,
   loadEngagement,
+  loadInitiatives,
   loadOpportunities,
   loadProcessMap,
   refreshStale,
   saveEngagement,
+  saveInitiatives,
   saveOpportunities,
   saveProcessMap,
 } from "./store";
@@ -169,5 +171,20 @@ test("missing analysis.json marks stale", async () => {
   await withRoots(({ sess }) => {
     writeSession(sess, "s1", false);
     assert.equal(refreshStale(engagement()).processes[0].stale, true);
+  });
+});
+
+test("initiatives: missing file is empty; round-trip is atomic", async () => {
+  await withRoots(({ eng }) => {
+    saveEngagement(engagement());
+    assert.deepEqual(loadInitiatives("eng1"), { enablement: [], expansion: [] });
+    const i = {
+      enablement: [{ id: "c1", title: "Workshop", format: "workshop" as const, audience: "TI", gap: "dados" as const, rationale: "r", durationDays: 1, hidden: false, order: 0 }],
+      expansion: [{ id: "x1", area: "Compras", rationale: "r", evidence: ["e"], relatedApps: ["SAP"], hidden: true, order: 0 }],
+    };
+    saveInitiatives("eng1", i);
+    assert.deepEqual(loadInitiatives("eng1"), i);
+    assert.ok(readdirSync(path.join(eng, "eng1")).includes("initiatives.json"));
+    assert.equal(readdirSync(path.join(eng, "eng1")).some((f) => f.endsWith(".tmp")), false);
   });
 });

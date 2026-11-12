@@ -81,6 +81,7 @@ const IPC = {
   diagnosticGet: "diagnostic:get",
   diagnosticSave: "diagnostic:save",
   diagnosticSaveOpportunities: "diagnostic:save-opportunities",
+  diagnosticSaveInitiatives: "diagnostic:save-initiatives",
   diagnosticDelete: "diagnostic:delete",
   diagnosticSuggestQuestionnaire: "diagnostic:suggest-questionnaire",
   diagnosticGenerateMap: "diagnostic:generate-map",
@@ -245,6 +246,8 @@ contextBridge.exposeInMainWorld("skillRecorder", {
   saveDiagnostic: (engagement) => ipcRenderer.invoke(IPC.diagnosticSave, engagement),
   saveDiagnosticOpportunities: (engagementId, opportunities) =>
     ipcRenderer.invoke(IPC.diagnosticSaveOpportunities, engagementId, opportunities),
+  saveDiagnosticInitiatives: (engagementId, initiatives) =>
+    ipcRenderer.invoke(IPC.diagnosticSaveInitiatives, engagementId, initiatives),
   deleteDiagnostic: (id) => ipcRenderer.invoke(IPC.diagnosticDelete, id),
   suggestDiagnosticQuestionnaire: (engagementId) =>
     ipcRenderer.invoke(IPC.diagnosticSuggestQuestionnaire, engagementId),

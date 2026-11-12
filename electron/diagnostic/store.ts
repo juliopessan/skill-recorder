@@ -16,9 +16,11 @@ import { z } from "zod";
 import { AnalysisSchema, type Analysis } from "../../common/analysis";
 import {
   EngagementSchema,
+  InitiativesSchema,
   OpportunitySchema,
   ProcessMapSchema,
   type Engagement,
+  type Initiatives,
   type Opportunity,
   type ProcessMap,
 } from "../../common/diagnostic";
@@ -125,6 +127,21 @@ export function loadOpportunities(engagementId: string): Opportunity[] {
 export function saveOpportunities(engagementId: string, opps: Opportunity[]): void {
   const valid = z.array(OpportunitySchema).parse(opps);
   writeJsonAtomic(path.join(engagementDir(engagementId), "opportunities.json"), valid);
+}
+
+export function loadInitiatives(engagementId: string): Initiatives {
+  return (
+    readValidated(
+      path.join(engagementDir(engagementId), "initiatives.json"),
+      InitiativesSchema,
+      () => new Error(`Iniciativas corrompidas: ${engagementId}`),
+    ) ?? { enablement: [], expansion: [] }
+  );
+}
+
+export function saveInitiatives(engagementId: string, initiatives: Initiatives): void {
+  const valid = InitiativesSchema.parse(initiatives);
+  writeJsonAtomic(path.join(engagementDir(engagementId), "initiatives.json"), valid);
 }
 
 /**

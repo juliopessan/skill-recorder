@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { Confidence } from "./analysis";
+import { MAX_SQUAD_SIZE } from "./diagnostic-config";
 
 /** Where a number or answer came from. Only "measured" and "confirmed" are trusted for reports. */
 export const Source = z.enum(["measured", "ai-suggested", "confirmed"]);
@@ -93,15 +94,54 @@ export const OpportunitySchema = z.object({
   effort: z.enum(["S", "M", "L"]),
   risk: z.enum(["low", "medium", "high"]),
   rationale: z.string(),
-  suggestedSquad: z.object({ roles: z.array(z.string()), weeks: z.number() }),
+  suggestedSquad: z.object({ roles: z.array(z.string()).max(MAX_SQUAD_SIZE), weeks: z.number() }),
   hidden: z.boolean().default(false),
   order: z.number().default(0),
 });
 export type Opportunity = z.infer<typeof OpportunitySchema>;
 
+/** Enablement item: training, AI workshop, literacy or mentoring. Never carries money. */
+export const EnablementSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  format: z.enum(["treinamento", "workshop", "letramento", "mentoria"]),
+  audience: z.string(),
+  gap: z.enum(["processos", "dados", "ia"]),
+  rationale: z.string(),
+  durationDays: z.number().gt(0).max(20),
+  hidden: z.boolean().default(false),
+  order: z.number().default(0),
+});
+export type Enablement = z.infer<typeof EnablementSchema>;
+
+/** A new front inside the client for the next consulting cycle. Never carries money. */
+export const ExpansionSchema = z.object({
+  id: z.string(),
+  area: z.string(),
+  rationale: z.string(),
+  evidence: z.array(z.string()).min(1),
+  relatedApps: z.array(z.string()).default([]),
+  hidden: z.boolean().default(false),
+  order: z.number().default(0),
+});
+export type Expansion = z.infer<typeof ExpansionSchema>;
+
+export const InitiativesSchema = z.object({
+  enablement: z.array(EnablementSchema).default([]),
+  expansion: z.array(ExpansionSchema).default([]),
+});
+export type Initiatives = z.infer<typeof InitiativesSchema>;
+
+export const EnablementSubmissionSchema = EnablementSchema.omit({ hidden: true, order: true });
+export type EnablementSubmission = z.infer<typeof EnablementSubmissionSchema>;
+export const ExpansionSubmissionSchema = ExpansionSchema.omit({ hidden: true, order: true });
+export type ExpansionSubmission = z.infer<typeof ExpansionSubmissionSchema>;
+
 /** What the opportunities agent submits; the engine adds hidden/order. */
 export const OpportunitiesSubmissionSchema = z.object({
   opportunities: z.array(OpportunitySchema.omit({ hidden: true, order: true })),
+  enablement: z.array(EnablementSubmissionSchema).default([]),
+  expansion: z.array(ExpansionSubmissionSchema).default([]),
 });
 export type OpportunitiesSubmission = z.infer<typeof OpportunitiesSubmissionSchema>;
 
