@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { Opportunity, Process, ProcessMap, ProcessMapStep, Role } from "./diagnostic";
+import type { DataQuestionnaire, Opportunity, Process, ProcessMap, ProcessMapStep, Role } from "./diagnostic";
 import {
   aiReadinessScore,
   dataScore,
@@ -99,10 +99,10 @@ test("aiReadinessScore(40, 80) === 46", () => {
 });
 
 test("dataScore is 100 with all answers 4 and all steps structured", () => {
-  const q = {
+  const q: DataQuestionnaire = {
     inventory: { answer: 4, source: "confirmed", evidence: [] },
     structure: { answer: 4, source: "confirmed", evidence: [] },
-  } as const;
+  };
   assert.equal(dataScore(q, [map]), 100);
 });
 
