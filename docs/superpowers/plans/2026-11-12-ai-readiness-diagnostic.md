@@ -214,3 +214,37 @@
 - [ ] **Step 1: Write scenarios and runner** following the layout of an existing scenario under `evals/scenarios/`.
 - [ ] **Step 2: Run** `npm run typecheck:evals` → clean; `npm run eval:diagnostic` (needs Copilot sign-in) → all checks pass, or record failures in the PR description.
 - [ ] **Step 3: Commit** `test(diagnostic): eval scenarios for map and opportunities`
+
+### Task 10: Avanade design, squad ≤ 5, AI maturity, enablement and expansion
+
+Added after user review (2026-11-12): report in the Avanade visual identity; squads of at most 5 people; beyond process automation, map AI maturity, enablement (trainings, AI workshops, literacy) and new fronts inside the client.
+
+**Files:**
+- Modify: `common/diagnostic.ts`, `common/diagnostic-config.ts`, `common/diagnostic-math.ts`, `common/diagnostic-rules.ts`, `common/diagnostic-report.ts`, `common/diagnostic-report-style.ts`, `common/diagnostic-report-svg.ts`, `electron/diagnostic/tools.ts`, `electron/diagnostic/instructions.ts`, `electron/diagnostic/agent.ts`, `electron/diagnostic/store.ts`, `electron/diagnostic/ipc.ts` (+ helpers if needed), `common/ipc.ts`, `src/diagnostics/OpportunityList.tsx`, `src/Diagnostics.tsx` (or a new `src/diagnostics/InitiativesPanel.tsx`), fixture `common/__fixtures__/diagnostic-engagement.json`
+- Test: existing test files of those modules
+
+**Interfaces:**
+- `common/diagnostic-config.ts`: `MAX_SQUAD_SIZE = 5`; `MATURITY_LEVELS = [{level:1,name:"Inicial",min:0},{level:2,name:"Exploratório",min:20},{level:3,name:"Estruturado",min:40},{level:4,name:"Escalável",min:60},{level:5,name:"Nativo em IA",min:80}]` (min = inclusive lower bound of the AI readiness score).
+- `common/diagnostic.ts`:
+  - `OpportunitySchema.suggestedSquad.roles` → `.max(MAX_SQUAD_SIZE)`.
+  - `EnablementSchema {id, title, format: "treinamento"|"workshop"|"letramento"|"mentoria", audience: string, gap: "processos"|"dados"|"ia", rationale: string, durationDays: number (>0, ≤ 20), hidden: boolean (default false), order: number}`.
+  - `ExpansionSchema {id, area: string, rationale: string, evidence: string[] (≥1), relatedApps: string[], hidden: boolean (default false), order: number}`.
+  - `OpportunitiesSubmissionSchema` gains `enablement: EnablementSubmission[]` (default `[]`) and `expansion: ExpansionSubmission[]` (default `[]`) — submissions omit hidden/order.
+  - `Initiatives {enablement: Enablement[], expansion: Expansion[]}`.
+- `common/diagnostic-math.ts`: `aiMaturity(aiScore: number): {level, name, nextLevel: {level, name, pointsNeeded} | null}`; `weakestDimension(processScore, dataScore): "processos" | "dados"` (ties → "dados").
+- `common/diagnostic-rules.ts`: `squadByWave(opps: Opportunity[]): {wave, roles: string[]}[]` — distinct roles (case-insensitive, trimmed, first spelling kept) per wave among visible opps; `validateSquadSize(opps): {ok:true}|{ok:false,error}` — error (pt-BR) when any opp has > 5 roles or any wave's distinct roles > 5.
+- `electron/diagnostic/store.ts`: `loadInitiatives(engagementId): Initiatives` (missing file → empty), `saveInitiatives(engagementId, i)` → `initiatives.json`, atomic.
+- `electron/diagnostic/tools.ts`: `submit_opportunities` also validates enablement/expansion via Zod and rejects (error text to the agent) when `validateSquadSize` fails. `get_diagnostic_context` additionally returns the three scores and the observed apps per process (still no money).
+- `electron/diagnostic/agent.ts`: `generateOpportunities` saves opportunities AND initiatives (hidden:false, order=index) only after a validated submission (same cancel rule).
+- `electron/diagnostic/instructions.ts` (pt-BR): squads ≤ 5 people per opportunity and per wave; propose 2–5 enablement items tied to the weakest gaps (e.g. low data score → workshop de governança de dados; low AI readiness → letramento em IA para liderança); propose 0–5 expansion fronts grounded in apps/handoffs seen in the recordings but not mapped; never money.
+- IPC: `getDiagnostic` result gains `initiatives`; new channel `diagnostic:save-initiatives` → `saveDiagnosticInitiatives(engagementId, initiatives: unknown)` (Zod-parsed); preload + `common/ipc.ts` updated (gate checks parity).
+- Report model gains `maturity` (from `aiMaturity(scores.ai)` plus `weakestDimension`), `enablement` and `expansion` (visible, sorted by order), `squadByWave` (with `count` and `MAX_SQUAD_SIZE`). Enablement/expansion never affect money totals.
+- Report sections (pt-BR): cover adds the maturity level (e.g. "Nível 2 de 5 — Exploratório") and "o que falta para o próximo nível" (points needed + weakest dimension); new section "Capacitação: treinamentos e workshops de IA" after Oportunidades; new section "Novas frentes no cliente" after the roadmap; roadmap lists enablement items in Onda 1 (capacitação precede a IA); squad section shows per wave "n de 5 pessoas".
+- Avanade visual identity in `common/diagnostic-report-style.ts` (+ SVG colors): tokens on `:root` — orange `#FF5800`, dark orange `#DC4600`, greys `#333333/#4c4c4c/#666666/#7f7f7f/#999999/#b3b3b3/#cccccc/#e5e5e5`, aurora `#890078`, master gradient `linear-gradient(135deg, #FF5800 0%, #890078 100%)`; font stack `'Segoe UI', 'Segoe UI Variable', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif`; H1/H2 weight 300, H3/H5 600; body text `#333333`; small orange text uses `#DC4600` (contrast); cover with the master gradient and white text; section headers preceded by a 4px orange accent bar; cards with 4px orange top border, radius 2px; tags uppercase with 0.1em tracking; data-structure colors: structured `#00A650`, semi `#FFB414`, unstructured `#C80000`; footer on every page `avanade.com` (Segoe UI 600, 9pt, right); tagline "Do what matters" (bold) only on the cover, never next to a logo. No logo is drawn (official SVG not available). Still no external fonts/URLs/scripts.
+- UI: OpportunityList (or a new InitiativesPanel) lists enablement and expansion items with hide/show and up/down, persisted via `saveDiagnosticInitiatives`; detail header shows the maturity level from the report model.
+
+- [ ] **Step 1: Write failing tests**: `aiMaturity(0)` → level 1 "Inicial", next {level 2, pointsNeeded 20}; `aiMaturity(40)` → level 3; `aiMaturity(80)` → level 5, next null; `aiMaturity(79)` → level 4, pointsNeeded 1; `OpportunitySchema` rejects 6 roles; `validateSquadSize` rejects a wave whose opps together need 6 distinct roles and accepts "Analista de dados"/"analista de dados " as one; `submit_opportunities` with 6 roles in one wave returns error text and does not call onSubmit; report HTML contains "Nível", "Capacitação", "Novas frentes no cliente", "Do what matters", "avanade.com", `#FF5800`, and no `http://`/`https://`/`<script`; enablement/expansion titles escaped; totals unchanged when enablement exists; hidden enablement absent; `loadInitiatives` on missing file → empty.
+- [ ] **Step 2: Run** each test file → FAIL.
+- [ ] **Step 3: Implement** the above.
+- [ ] **Step 4: Run** tests → PASS; `npm test`, `npm run typecheck`, `npm run build`; re-render the report sample (html/pdf/png) and UI screenshots; inspect them.
+- [ ] **Step 5: Commit** `feat(diagnostic): Avanade report design, squad cap, AI maturity, enablement and expansion`
