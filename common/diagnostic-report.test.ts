@@ -118,7 +118,110 @@ test("assumptions label every number with its source", () => {
   const f = load();
   const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW);
   assert.ok(m.assumptions.length > 0);
-  for (const a of m.assumptions) assert.ok(["measured", "ai-suggested", "confirmed"].includes(a.source));
+  for (const a of m.assumptions) assert.ok(["measured", "ai-suggested", "confirmed", "consultant"].includes(a.source));
   assert.ok(m.assumptions.some((a) => a.source === "ai-suggested"));
   assert.ok(m.assumptions.some((a) => a.source === "measured"));
+});
+
+const render = (f: Fixture): string => renderReportHtml(buildReportModel(f.engagement, f.maps, f.opportunities, NOW), f.engagement, f.maps);
+
+test("hidden prerequisites are omitted from every path but still block the quick win", () => {
+  const f = load();
+  f.opportunities[0]!.prerequisites = ["o4"]; // o1 depends on the hidden o4
+  f.opportunities[1]!.prerequisites = ["o1", "o4"];
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW);
+  const byId = new Map(m.opportunities.map((o) => [o.id, o]));
+  assert.equal(byId.get("o1")!.quickWin, false);
+  assert.deepEqual(byId.get("o2")!.prerequisitePath.map((p) => p.id), ["o1"]);
+  assert.ok(!render(f).includes("Painel de divergências"));
+});
+
+test("totals do not double count opportunities on the same step", () => {
+  const f = load();
+  f.opportunities[1]!.stepIds = ["s2"]; // o1 (wave 1, 30%) and o2 (wave 2, 50%) both on s2 (6000)
+  f.opportunities[2]!.stepIds = [];
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW);
+  assert.equal(m.totals.monthlySavings, 3000);
+});
+
+test("savings provenance label shows for unconfirmed percentages only, without a draft banner", () => {
+  const f = load();
+  const html = render(f);
+  assert.ok(html.includes("estimativa sugerida pela IA, limitada por teto da onda"));
+  assert.ok(!html.includes("Rascunho — premissas não confirmadas"));
+  for (const o of f.opportunities) o.estimatedSavingsPct.source = "confirmed";
+  assert.ok(!render(f).includes("estimativa sugerida pela IA"));
+});
+
+test("role hourly cost is attributed to the consultant", () => {
+  const html = render(load());
+  assert.ok(html.includes("informado pelo consultor"));
+});
+
+test("unconfirmed or missing questionnaire axes make the report a draft", () => {
+  const f = load();
+  delete f.engagement.dataQuestionnaire.governance;
+  f.engagement.dataQuestionnaire.access!.source = "ai-suggested";
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW);
+  assert.equal(m.draft, true);
+  assert.equal(m.draftReasons.length, 2);
+});
+
+test("empty and zero states render without NaN, Infinity or undefined", () => {
+  const bad = /NaN|Infinity|undefined|\[object/;
+  const cases: Record<string, (f: Fixture) => void> = {
+    "no processes": (f) => { f.engagement.processes = []; f.maps = {}; f.opportunities = []; },
+    "no maps": (f) => { f.maps = {}; },
+    "no opportunities": (f) => { f.opportunities = []; },
+    "empty questionnaire": (f) => { f.engagement.dataQuestionnaire = {}; },
+    "zero cost": (f) => { for (const r of f.engagement.roles) r.hourlyCost = 0; },
+    "map without steps": (f) => { f.maps.p1!.steps = []; f.maps.p1!.variants = []; },
+    "null durations": (f) => { for (const s of f.maps.p1!.steps) s.medianDurationMs = null; },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const f = load();
+    mutate(f);
+    const html = render(f);
+    assert.ok(html.startsWith("<!doctype html>"), name);
+    assert.ok(!bad.test(html.replace(/<style>[\s\S]*?<\/style>/, "")), `${name}: ${html.match(bad)?.[0]}`);
+  }
+});
+
+test("escaping covers aria-labels, apps, roles, owners, variants and quotes in attributes", () => {
+  const f = load();
+  const evil = `"><svg onload=x>`;
+  f.engagement.processes[0]!.name = `Proc ${evil}`;
+  f.engagement.processes[0]!.owner = `Dono ${evil}`;
+  f.engagement.roles[0]!.name = `Papel ${evil}`;
+  f.maps.p1!.steps[0]!.apps = [`App ${evil}`];
+  f.maps.p1!.variants[0]!.description = `Var ${evil}`;
+  f.opportunities[0]!.suggestedSquad.roles = [`Perfil ${evil}`];
+  const html = render(f);
+  assert.ok(!html.includes(`${evil}`));
+  assert.ok(!html.includes("<svg onload"));
+  assert.ok(html.includes("&quot;&gt;&lt;svg onload=x&gt;"));
+});
+
+test("unexpected enum-like values neither throw nor inject markup", () => {
+  const f = load();
+  (f.opportunities[0] as unknown as Record<string, unknown>).risk = "<b>x</b>";
+  (f.opportunities[0] as unknown as Record<string, unknown>).effort = "<i>";
+  (f.maps.p1!.steps[0] as unknown as Record<string, unknown>).dataStructure = "<u>";
+  const html = render(f);
+  assert.ok(!html.includes("<b>x"));
+  assert.ok(!html.includes("<u>"));
+  assert.ok(!html.includes("<i>"));
+});
+
+test("squad roles are grouped case-insensitively and generatedAt uses Sao Paulo time", () => {
+  const f = load();
+  f.opportunities[0]!.suggestedSquad.roles = ["Analista de Dados", " analista de dados "];
+  f.opportunities[1]!.suggestedSquad.roles = ["ANALISTA DE DADOS"];
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW);
+  const r = m.squad.roles.filter((x) => x.name.toLowerCase() === "analista de dados");
+  assert.equal(r.length, 1);
+  assert.equal(r[0]!.name, "Analista de Dados");
+  const late = Date.UTC(2026, 10, 13, 1, 0, 0); // 22:00 on the 12th in Sao Paulo
+  const html = renderReportHtml(buildReportModel(f.engagement, f.maps, f.opportunities, late), f.engagement, f.maps);
+  assert.ok(html.includes("12 de novembro de 2026"));
 });

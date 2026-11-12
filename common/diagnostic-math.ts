@@ -1,6 +1,7 @@
 import { DIAGNOSTIC_CONFIG } from "./diagnostic-config";
 import type {
   DataQuestionnaire,
+  Engagement,
   Opportunity,
   Process,
   ProcessMap,
@@ -83,4 +84,36 @@ export function opportunityReadiness(opp: Opportunity, processScoreValue: number
   if (opp.wave === 1) return 100;
   if (opp.wave === 2) return score(processScoreValue);
   return aiReadinessScore(processScoreValue, dataScoreValue);
+}
+
+/** Integer mean of the per-process scores; 0 when there are no maps. */
+export function overallProcessScore(maps: ProcessMap[]): number {
+  if (maps.length === 0) return 0;
+  return Math.round(maps.reduce((sum, m) => sum + processScore(m), 0) / maps.length);
+}
+
+/**
+ * Total savings without double counting: opportunities that touch the same step are alternative
+ * stages of one path (dados -> automação -> IA), so each step contributes only the largest saving
+ * among them. A saving is step cost x min(requested pct, wave cap).
+ */
+export function aggregateSavings(opps: Opportunity[], maps: Record<string, ProcessMap>, engagement: Engagement): number {
+  const processes = new Map(engagement.processes.map((p) => [p.id, p]));
+  const roles = new Map(engagement.roles.map((r) => [r.id, r]));
+  const best = new Map<string, number>();
+  for (const o of opps) {
+    const process = processes.get(o.processId);
+    const map = maps[o.processId];
+    if (!process || !map) continue;
+    const role = process.roleId ? roles.get(process.roleId) : undefined;
+    const pct = Math.min(o.estimatedSavingsPct.value, DIAGNOSTIC_CONFIG.waveCaps[o.wave]);
+    const ids = new Set(o.stepIds);
+    for (const s of map.steps) {
+      if (!ids.has(s.id)) continue;
+      const saving = money(stepMonthlyCost(s, process, role) * pct);
+      const key = `${o.processId}\u0000${s.id}`;
+      if (saving > (best.get(key) ?? 0)) best.set(key, saving);
+    }
+  }
+  return money([...best.values()].reduce((a, b) => a + b, 0));
 }

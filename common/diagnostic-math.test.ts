@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { DataQuestionnaire, Opportunity, Process, ProcessMap, ProcessMapStep, Role } from "./diagnostic";
+import type { DataQuestionnaire, Engagement, Opportunity, Process, ProcessMap, ProcessMapStep, Role } from "./diagnostic";
 import {
+  aggregateSavings,
   aiReadinessScore,
   dataScore,
   observedStructuredRatio,
   opportunityReadiness,
+  overallProcessScore,
   opportunitySavings,
   processMonthlyCost,
   processScore,
@@ -129,4 +131,44 @@ test("opportunityReadiness per wave", () => {
   assert.equal(opportunityReadiness(opp({ wave: 1 }), 40, 80), 100);
   assert.equal(opportunityReadiness(opp({ wave: 2 }), 40, 80), 40);
   assert.equal(opportunityReadiness(opp({ wave: 3 }), 40, 80), 46);
+});
+
+const aggEngagement = (): Engagement => ({
+  version: 1,
+  id: "e",
+  clientName: "c",
+  createdAt: 0,
+  currency: "BRL",
+  roles: [{ id: "r1", name: "A", hourlyCost: 100 }],
+  dataQuestionnaire: {},
+  processes: [
+    { id: "p1", name: "P", sessionIds: [], roleId: "r1", volumePerMonth: { value: 10, source: "confirmed" }, stale: false },
+  ],
+  thesisText: "",
+});
+const H = 3_600_000;
+const aggMap = (): ProcessMap => mkMap([step("a", H), step("b", H), step("c", H)], 0); // 1000 each
+
+test("aggregateSavings takes the max, not the sum, for opportunities on the same step", () => {
+  const o1 = opp({ id: "o1", wave: 1, stepIds: ["a"], estimatedSavingsPct: { value: 0.3, source: "ai-suggested" } });
+  const o2 = opp({ id: "o2", wave: 2, stepIds: ["a"], estimatedSavingsPct: { value: 0.5, source: "ai-suggested" } });
+  assert.equal(aggregateSavings([o1, o2], { p1: aggMap() }, aggEngagement()), 500);
+});
+
+test("aggregateSavings sums disjoint steps, applies wave caps and never exceeds process cost", () => {
+  const o1 = opp({ id: "o1", wave: 1, stepIds: ["a"], estimatedSavingsPct: { value: 0.9, source: "ai-suggested" } }); // cap .3 -> 300
+  const o2 = opp({ id: "o2", wave: 3, stepIds: ["b", "c"], estimatedSavingsPct: { value: 1, source: "ai-suggested" } }); // cap .8 -> 1600
+  const e = aggEngagement();
+  const total = aggregateSavings([o1, o2], { p1: aggMap() }, e);
+  assert.equal(total, 1900);
+  assert.ok(total <= processMonthlyCost(aggMap(), e.processes[0]!, e.roles[0]));
+  assert.equal(aggregateSavings([], { p1: aggMap() }, e), 0);
+  assert.equal(aggregateSavings([o1], {}, e), 0);
+});
+
+test("overallProcessScore is the integer mean of per-process scores", () => {
+  const a = mkMap([step("a", 1, { manualTransfer: true }), step("b", 1)], 1); // 80
+  const b = mkMap([step("a", 1)], 0); // 100
+  assert.equal(overallProcessScore([a, b]), 90);
+  assert.equal(overallProcessScore([]), 0);
 });

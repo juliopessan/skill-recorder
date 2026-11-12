@@ -78,7 +78,9 @@ const engagement = (over: Record<string, unknown> = {}): Engagement => ({
   createdAt: 1,
   currency: "BRL",
   roles: [{ id: "r1", name: "Analista", hourlyCost: 50 }],
-  dataQuestionnaire: {},
+  dataQuestionnaire: Object.fromEntries(
+    ["inventory", "structure", "quality", "access", "governance"].map((a) => [a, { answer: 3, source: "confirmed", evidence: [] }]),
+  ),
   processes: [
     {
       id: "p1",
@@ -108,6 +110,18 @@ test("draftReasons flags ai-suggested volume, missing map, role, zero cost and s
   const zero = engagement();
   zero.roles[0]!.hourlyCost = 0;
   assert.ok(draftReasons(zero, maps).length > 0);
+});
+
+test("draftReasons flags each unanswered or unconfirmed questionnaire axis", () => {
+  const maps = { p1: mkMap([step("s1")]) };
+  const e = engagement();
+  delete e.dataQuestionnaire.access;
+  e.dataQuestionnaire.quality = { answer: 2, source: "ai-suggested", evidence: [] };
+  const reasons = draftReasons(e, maps);
+  assert.equal(reasons.length, 2);
+  assert.ok(reasons.some((r) => r.includes("Acesso") && r.includes("não foi respondido")));
+  assert.ok(reasons.some((r) => r.includes("Qualidade") && r.includes("não foi confirmada")));
+  assert.equal(draftReasons({ ...engagement(), dataQuestionnaire: {} }, maps).length, 5);
 });
 
 test("isQuickWin: wave-3 S opp with a prerequisite is not a quick win", () => {

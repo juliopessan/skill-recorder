@@ -4,6 +4,7 @@ import type {
   Opportunity,
   ProcessMap,
   QuestionnaireAnswer,
+  QuestionnaireAxis,
 } from "./diagnostic";
 import { observedStructuredRatio } from "./diagnostic-math";
 
@@ -42,6 +43,15 @@ export function validateOpportunities(opps: Opportunity[]): ValidationResult {
   return { ok: true };
 }
 
+const AXIS_NAME: Record<QuestionnaireAxis, string> = {
+  inventory: "Inventário",
+  structure: "Estrutura",
+  quality: "Qualidade",
+  access: "Acesso",
+  governance: "Governança",
+};
+const AXES = Object.keys(AXIS_NAME) as QuestionnaireAxis[];
+
 /** Reasons (pt-BR) why the report must stay a draft. Empty when every number is trustworthy. */
 export function draftReasons(e: Engagement, maps: Record<string, ProcessMap>): string[] {
   const reasons: string[] = [];
@@ -58,6 +68,11 @@ export function draftReasons(e: Engagement, maps: Record<string, ProcessMap>): s
     if (!role) reasons.push(`O processo "${p.name}" não tem papel definido.`);
     else if (role.hourlyCost <= 0) reasons.push(`O papel "${role.name}" do processo "${p.name}" não tem custo/hora válido.`);
     if (p.stale) reasons.push(`O mapa do processo "${p.name}" está desatualizado.`);
+  }
+  for (const axis of AXES) {
+    const a = e.dataQuestionnaire[axis];
+    if (!a) reasons.push(`O eixo de dados "${AXIS_NAME[axis]}" do questionário não foi respondido.`);
+    else if (a.source !== "confirmed") reasons.push(`A resposta do eixo de dados "${AXIS_NAME[axis]}" não foi confirmada.`);
   }
   return reasons;
 }

@@ -78,7 +78,7 @@ function arrowHead(x: number, y: number, dir: "right" | "down"): string {
 }
 
 function stepBox(step: ProcessMapStep, index: number, x: number, y: number): string {
-  const st = STRUCTURE[step.dataStructure];
+  const st = STRUCTURE[step.dataStructure] ?? STRUCTURE.unstructured;
   const title = wrapText(step.title, 19, 2);
   const apps = wrapText(step.apps.join(", ") || "sem aplicativo", 27, 1)[0]!;
   const badges: string[] = [];
@@ -109,6 +109,7 @@ function stepBox(step: ProcessMapStep, index: number, x: number, y: number): str
 /** Left-to-right (wrapping) flow of the mapped steps, boxes colored by data structure. */
 export function processFlowSvg(map: ProcessMap, label: string): string {
   const steps = map.steps;
+  if (steps.length === 0) return `<p class="muted">Nenhum passo mapeado.</p>`;
   const rows = Math.max(1, Math.ceil(steps.length / PER_ROW));
   const width = PER_ROW * BOX_W + (PER_ROW - 1) * GAP_X;
   const flowH = rows * BOX_H + (rows - 1) * GAP_Y + 12;
@@ -198,7 +199,7 @@ export function radarSvg(answers: Partial<Record<QuestionnaireAxis, number>>): s
     );
   }).join("");
   return (
-    `<svg class="chart" viewBox="0 0 460 390" role="img" aria-label="Radar dos cinco eixos de dados" font-family="inherit">` +
+    `<svg class="chart" viewBox="30 40 400 290" role="img" aria-label="Radar dos cinco eixos de dados" font-family="inherit">` +
     rings + spokes + ringLabels +
     `<polygon points="${data}" fill="${COLORS.accent}" fill-opacity="0.18" stroke="${COLORS.accent}" stroke-width="2"/>` +
     dots + labels + `</svg>`
