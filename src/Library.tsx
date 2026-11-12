@@ -48,6 +48,8 @@ import { SkillReviewModal } from "./SkillReviewModal";
 import { initialSkillReviewState, SkillOperationGuard, skillReviewBusy, skillReviewReducer } from "./skill-review-state";
 import { SensitiveReview } from "./SensitiveReview";
 import { AnalysisRecovery, completeSignIn, type AnalysisRun } from "./analysis-recovery";
+import { Diagnostics } from "./Diagnostics";
+import { ViewSwitch, type LibraryView } from "./diagnostics/ViewSwitch";
 
 export function Library() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -55,6 +57,7 @@ export function Library() {
   const [loaded, setLoaded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [narrationStatus, setNarrationStatus] = useState<NarrationStatus | null>(null);
+  const [view, setView] = useState<LibraryView>("sessions");
 
   const loadSessions = useCallback(async () => {
     const list = await window.skillRecorder.listSessions();
@@ -106,10 +109,15 @@ export function Library() {
 
   const selected = sessions.find((s) => s.id === selectedId) ?? null;
 
+  if (view === "diagnostics") {
+    return <Diagnostics switcher={<ViewSwitch view={view} onChange={setView} />} />;
+  }
+
   return (
     <div className="lib">
       <aside className="lib-list">
         <div className="lib-list-head">
+          <ViewSwitch view={view} onChange={setView} />
           <span className="eyebrow">Sessions</span>
           <span className="pill">{sessions.length}</span>
         </div>

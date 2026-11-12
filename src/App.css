@@ -3597,3 +3597,726 @@ button:focus-visible,
   color: var(--brand-ink);
   background: var(--signal-dim);
 }
+
+/* =========================================================================
+   Diagnósticos (AI readiness diagnostic)
+   ========================================================================= */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lib-list-head:has(.diag-switch) {
+  flex-wrap: wrap;
+}
+
+.diag-switch {
+  display: flex;
+  flex: 1 0 100%;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+
+.diag-switch button {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+}
+
+.diag-switch button:hover {
+  color: var(--text);
+}
+
+.diag-switch button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.diag-head {
+  padding-bottom: 12px;
+}
+
+.diag-new {
+  padding: 0 16px 12px;
+}
+
+.diag-new-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.diag-add {
+  padding: 8px 14px;
+  flex: none;
+}
+
+.diag-eng-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.diag-main {
+  overflow: hidden;
+}
+
+.diag-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 28px 36px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.diag-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diag-h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.diag-next {
+  margin: 4px 0 0;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--brand-ink);
+  background: var(--signal-dim);
+  border-radius: 8px;
+  align-self: flex-start;
+}
+
+.diag-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.diag-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.diag-h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.diag-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.diag-warn {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--brand-ink);
+}
+
+.diag-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.diag-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.diag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.diag-field.grow {
+  flex: 1;
+}
+
+.diag-field.narrow {
+  width: 110px;
+  flex: none;
+}
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+select.fb-input {
+  appearance: auto;
+}
+
+.diag-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diag-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.diag-unit {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.diag-source {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.diag-source.confirmed {
+  color: var(--go);
+  background: rgba(var(--go-rgb), 0.12);
+}
+
+.diag-source.ai-suggested,
+.diag-source.stale {
+  color: var(--brand-ink);
+  background: var(--signal-dim);
+}
+
+.diag-source.measured {
+  color: var(--text);
+}
+
+.diag-process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diag-process {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--deck);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.diag-process-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.diag-process-name .fb-input {
+  font-weight: 600;
+}
+
+.diag-process-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diag-inline-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.diag-sourced {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.diag-sourced-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 20px;
+}
+
+.diag-sessions {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diag-sessions legend {
+  padding: 0 4px;
+}
+
+.diag-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.diag-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.diag-check:hover {
+  background: var(--surface-2);
+}
+
+.diag-check input {
+  grid-row: span 2;
+  accent-color: var(--signal);
+}
+
+.diag-check input:focus-visible,
+.diag-level input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.diag-check-title {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.diag-check-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.diag-map {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diag-map-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.diag-map-head .diag-hint {
+  margin: 0;
+}
+
+.diag-steps {
+  margin: 0;
+  padding: 0 0 0 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.diag-steps li {
+  padding-left: 4px;
+}
+
+.diag-step-title {
+  display: block;
+}
+
+.diag-step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.diag-flag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand-ink);
+  background: var(--signal-dim);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+.diag-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.diag-progress {
+  flex: 1;
+  min-width: 220px;
+}
+
+.diag-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--brand-ink);
+  background: var(--signal-dim);
+  border-radius: 8px;
+}
+
+.diag-axes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.diag-axis {
+  margin: 0;
+  min-width: 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diag-axis.pending {
+  border-color: var(--signal);
+  background: var(--signal-dim);
+}
+
+.diag-axis-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.diag-axis .diag-hint {
+  margin: 0;
+}
+
+.diag-levels {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.diag-level {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 4px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.diag-level:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.diag-level.on {
+  border-color: var(--signal);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+
+.diag-level input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.diag-level-n {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.diag-evidence {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.diag-confirm {
+  align-self: flex-start;
+}
+
+.diag-opps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diag-opp {
+  padding: 14px 16px;
+  background: var(--deck);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diag-opp.wave-1 { border-left-color: var(--go); }
+.diag-opp.wave-2 { border-left-color: var(--warn); }
+.diag-opp.wave-3 { border-left-color: var(--brand); }
+
+.diag-opp.hidden {
+  opacity: 0.6;
+}
+
+.diag-opp-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.diag-opp-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+}
+
+.diag-opp-tools .linky:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.diag-wave {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.diag-quick {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: var(--go);
+  background: rgba(var(--go-rgb), 0.12);
+}
+
+.diag-opp-title {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.diag-opp-rationale {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.diag-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 16px;
+}
+
+.diag-facts dt {
+  font-size: 10.5px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.diag-facts dd {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.diag-fact-note {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.diag-inline-btn {
+  margin-left: 8px;
+}
+
+.diag-prereq {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.diag-prereq ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text);
+}
+
+.diag-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.diag-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--deck);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.diag-kpi strong {
+  font-size: 20px;
+  color: var(--text);
+}
+
+.diag-kpi small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.diag-draft {
+  padding: 14px 16px;
+  background: var(--deck);
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+}
+
+.diag-draft-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.diag-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.diag-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.diag-box {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.diag-section-actions .ghost {
+  white-space: nowrap;
+}
