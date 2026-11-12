@@ -38,9 +38,15 @@ function findStep(refs: StepRef, analyses: LinkedAnalysis[]) {
 /** Median of (endMs − startMs) of the referenced analysis steps that have both; null if none do. */
 export function medianDurationFromRefs(refs: StepRef[], analyses: LinkedAnalysis[]): number | null {
   const durations: number[] = [];
+  const seen = new Set<string>();
   for (const ref of refs) {
+    const key = JSON.stringify([ref.sessionId, ref.stepId]);
+    if (seen.has(key)) continue;
+    seen.add(key);
     const step = findStep(ref, analyses);
-    if (step?.startMs != null && step.endMs != null) durations.push(step.endMs - step.startMs);
+    if (step?.startMs != null && step.endMs != null && step.endMs >= step.startMs) {
+      durations.push(step.endMs - step.startMs);
+    }
   }
   return durations.length ? median(durations) : null;
 }
@@ -144,13 +150,28 @@ export function buildMapTools(ctx: MapToolContext): Tool[] {
       additionalProperties: false,
     },
     handler: (raw) => {
-      const parsed = ProcessMapSubmissionSchema.safeParse(raw);
+      // medianDurationMs is discarded and recomputed, so the agent may omit it.
+      const withDefaults =
+        raw && typeof raw === "object" && Array.isArray((raw as { steps?: unknown }).steps)
+          ? {
+              ...(raw as object),
+              steps: (raw as { steps: unknown[] }).steps.map((st) =>
+                st && typeof st === "object" ? { medianDurationMs: null, ...(st as object) } : st,
+              ),
+            }
+          : raw;
+      const parsed = ProcessMapSubmissionSchema.safeParse(withDefaults);
       if (!parsed.success) return failure(zodText("submit_process_map", parsed.error));
       const sub = parsed.data;
       const ids = new Set<string>();
       for (const st of sub.steps) {
         if (ids.has(st.id)) return failure(`submit_process_map rejeitado — id de passo duplicado: "${st.id}".`);
         ids.add(st.id);
+        if (st.sourceStepRefs.length === 0) {
+          return failure(
+            `submit_process_map rejeitado — o passo "${st.id}" não tem sourceStepRefs; todo passo do mapa deve se basear em ao menos um passo gravado.`,
+          );
+        }
         for (const ref of st.sourceStepRefs) {
           const session = ctx.analyses.find((a) => a.sessionId === ref.sessionId);
           if (!session) {

@@ -54,10 +54,31 @@ test("medianDurationFromRefs: odd, even and missing timestamps", () => {
   const ref = (sessionId: string, stepId: string) => ({ sessionId, stepId });
   assert.equal(medianDurationFromRefs([ref("s1", "a")], analyses), 100);
   assert.equal(medianDurationFromRefs([ref("s1", "a"), ref("s2", "a")], analyses), 250);
-  assert.equal(medianDurationFromRefs([ref("s1", "a"), ref("s2", "a"), ref("s1", "a")], analyses), 100);
   assert.equal(medianDurationFromRefs([ref("s1", "b")], analyses), null);
   assert.equal(medianDurationFromRefs([], analyses), null);
   assert.equal(medianDurationFromRefs([ref("zz", "a")], analyses), null);
+});
+
+test("medianDurationFromRefs: dedupes refs and ignores negative durations", () => {
+  const ref = (sessionId: string, stepId: string) => ({ sessionId, stepId });
+  // duplicates would skew toward 100 if counted: [100,100,400] -> 100; deduped [100,400] -> 250
+  assert.equal(medianDurationFromRefs([ref("s1", "a"), ref("s1", "a"), ref("s2", "a")], analyses), 250);
+  const neg: LinkedAnalysis[] = [{
+    sessionId: "n",
+    analysis: { steps: [step("x", { startMs: 500, endMs: 100 }), step("y", { startMs: 0, endMs: 40 })] } as unknown as Analysis,
+  }];
+  assert.equal(medianDurationFromRefs([ref("n", "x")], neg), null);
+  assert.equal(medianDurationFromRefs([ref("n", "x"), ref("n", "y")], neg), 40);
+});
+
+test("submit_process_map: step without sourceStepRefs is rejected", async () => {
+  let calls = 0;
+  const tools = buildMapTools({ analyses, onSubmit: () => { calls++; } });
+  const r = await invoke(tools, "submit_process_map", mapPayload([mapStep({ sourceStepRefs: [] })]));
+  assert.ok(isFailure(r));
+  assert.match(text(r), /sourceStepRefs/);
+  assert.equal(calls, 0);
+  assert.match(MAP_INSTRUCTIONS, /ao menos um item em sourceStepRefs/);
 });
 
 test("get_analyses returns steps with apps and durations", async () => {
@@ -99,8 +120,8 @@ test("submit_process_map: valid payload submits once with duration and apps reco
   assert.equal(got.length, 1);
   assert.equal(got[0].steps[0].medianDurationMs, 250);
   assert.deepEqual(got[0].steps[0].apps, ["Chrome", "Excel"]);
-  // no refs -> null duration, empty apps, whatever the agent claimed
-  const none = await invoke(tools, "submit_process_map", mapPayload([mapStep({ sourceStepRefs: [] })]));
+  // refs without timestamps -> null duration, apps still recomputed (none here)
+  const none = await invoke(tools, "submit_process_map", mapPayload([mapStep({ sourceStepRefs: [{ sessionId: "s1", stepId: "b" }] })]));
   assert.ok(!isFailure(none));
   assert.equal(got[1].steps[0].medianDurationMs, null);
   assert.deepEqual(got[1].steps[0].apps, []);
@@ -201,4 +222,13 @@ test("instructions: pt-BR, ordering rule present, no model identifiers", () => {
   assert.match(OPPORTUNITY_INSTRUCTIONS, /Nunca produza valores monetários/);
   assert.match(MAP_INSTRUCTIONS, /Nunca informe valores monetários/);
   for (const t of [MAP_INSTRUCTIONS, OPPORTUNITY_INSTRUCTIONS]) assert.ok(!/gpt|claude|gemini/i.test(t));
+});
+
+test("submit_process_map: agent may omit medianDurationMs", async () => {
+  const got: ProcessMapSubmission[] = [];
+  const tools = buildMapTools({ analyses, onSubmit: (s) => got.push(s) });
+  const { medianDurationMs: _ignored, ...noDuration } = mapStep();
+  const r = await invoke(tools, "submit_process_map", mapPayload([noDuration]));
+  assert.ok(!isFailure(r), text(r));
+  assert.equal(got[0].steps[0].medianDurationMs, 250);
 });

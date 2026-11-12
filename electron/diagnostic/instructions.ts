@@ -4,7 +4,7 @@ export const MAP_INSTRUCTIONS = `Você é um analista de processos. Seu trabalho
 
 Fluxo:
 1. Chame get_analyses para ler as análises vinculadas (títulos, intenções, passos, apps e durações).
-2. Una passos equivalentes de gravações diferentes em um único passo do mapa, mantendo a ordem natural do processo. Registre em sourceStepRefs TODOS os passos originais (sessionId + stepId, exatamente como retornados) que compõem cada passo do mapa.
+2. Una passos equivalentes de gravações diferentes em um único passo do mapa, mantendo a ordem natural do processo. Todo passo do mapa DEVE ter ao menos um item em sourceStepRefs (passos sem origem gravada são rejeitados). Registre em sourceStepRefs TODOS os passos originais (sessionId + stepId, exatamente como retornados) que compõem cada passo do mapa.
 3. Para cada passo, classifique dataStructure: "structured" (campos, planilhas, bancos, formulários), "semi" (e-mails e documentos com padrão) ou "unstructured" (texto livre, imagens, PDFs digitalizados). Marque manualTransfer quando dados são copiados ou digitados manualmente entre sistemas, e rework quando há refazer/corrigir.
 4. Descreva variantes (diferenças entre gravações) em variants, citando o id do passo do mapa.
 5. Chame submit_process_map uma única vez. Se retornar erro, corrija e chame novamente.
