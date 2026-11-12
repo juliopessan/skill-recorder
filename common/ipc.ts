@@ -1,5 +1,7 @@
 import type { Analysis, AnalysisFeedback, AnalysisStep, Confidence } from "./analysis";
 import type { AutomationPlan, BuiltAutomation } from "./automation";
+import type { DiagnosticReport } from "./diagnostic-report";
+import type { DataQuestionnaire, Engagement, Opportunity, ProcessMap } from "./diagnostic";
 import type { MicrophoneDevice } from "./microphone";
 import type { NarrationLanguage } from "./narration";
 import type { ScreenSource } from "./screen";
@@ -525,7 +527,30 @@ export const IPC = {
   closeLibrary: "ui:close-library",
   recordingControlsExpanded: "ui:recording-controls-expanded",
   fitRecorderHeight: "ui:fit-recorder-height",
+  diagnosticList: "diagnostic:list",
+  diagnosticGet: "diagnostic:get",
+  diagnosticSave: "diagnostic:save",
+  diagnosticSaveOpportunities: "diagnostic:save-opportunities",
+  diagnosticDelete: "diagnostic:delete",
+  diagnosticSuggestQuestionnaire: "diagnostic:suggest-questionnaire",
+  diagnosticGenerateMap: "diagnostic:generate-map",
+  diagnosticGenerateOpportunities: "diagnostic:generate-opportunities",
+  diagnosticCancel: "diagnostic:cancel",
+  diagnosticProgress: "diagnostic:progress",
+  diagnosticExport: "diagnostic:export",
 } as const;
+
+/** Any diagnostic call may fail with a pt-BR message instead of throwing to the renderer. */
+export type DiagnosticResult<T> = T | { error: string };
+
+export interface DiagnosticBundle {
+  engagement: Engagement;
+  maps: Record<string, ProcessMap>;
+  opportunities: Opportunity[];
+  report: DiagnosticReport;
+}
+
+export type DiagnosticExportResult = { path: string } | { canceled: true };
 
 /** Shape exposed on `window.skillRecorder` by the preload bridge. */
 export interface SkillRecorderApi {
@@ -672,4 +697,15 @@ export interface SkillRecorderApi {
   /** Fit the compact recorder window to its rendered content height (fire-and-forget)
    *  so the fixed-width HUD never shows dead space or clips a revealed row. */
   fitRecorderHeight(height: number): void;
+  listDiagnostics(): Promise<DiagnosticResult<Engagement[]>>;
+  getDiagnostic(id: string): Promise<DiagnosticResult<DiagnosticBundle>>;
+  saveDiagnostic(engagement: unknown): Promise<DiagnosticResult<Engagement>>;
+  saveDiagnosticOpportunities(engagementId: string, opportunities: unknown): Promise<DiagnosticResult<Opportunity[]>>;
+  deleteDiagnostic(id: string): Promise<DiagnosticResult<{ ok: true }>>;
+  suggestDiagnosticQuestionnaire(engagementId: string): Promise<DiagnosticResult<DataQuestionnaire>>;
+  generateDiagnosticMap(engagementId: string, processId: string, feedback?: string): Promise<DiagnosticResult<ProcessMap>>;
+  generateDiagnosticOpportunities(engagementId: string, feedback?: string): Promise<DiagnosticResult<Opportunity[]>>;
+  cancelDiagnostic(): Promise<{ ok: true }>;
+  onDiagnosticProgress(cb: (message: string) => void): () => void;
+  exportDiagnostic(engagementId: string, format: "html" | "pdf"): Promise<DiagnosticResult<DiagnosticExportResult>>;
 }

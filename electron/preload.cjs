@@ -77,6 +77,17 @@ const IPC = {
   closeLibrary: "ui:close-library",
   recordingControlsExpanded: "ui:recording-controls-expanded",
   fitRecorderHeight: "ui:fit-recorder-height",
+  diagnosticList: "diagnostic:list",
+  diagnosticGet: "diagnostic:get",
+  diagnosticSave: "diagnostic:save",
+  diagnosticSaveOpportunities: "diagnostic:save-opportunities",
+  diagnosticDelete: "diagnostic:delete",
+  diagnosticSuggestQuestionnaire: "diagnostic:suggest-questionnaire",
+  diagnosticGenerateMap: "diagnostic:generate-map",
+  diagnosticGenerateOpportunities: "diagnostic:generate-opportunities",
+  diagnosticCancel: "diagnostic:cancel",
+  diagnosticProgress: "diagnostic:progress",
+  diagnosticExport: "diagnostic:export",
 };
 
 let recordingPrivacyWarningPending = false;
@@ -229,4 +240,24 @@ contextBridge.exposeInMainWorld("skillRecorder", {
   setRecordingControlsExpanded: (expanded) =>
     ipcRenderer.invoke(IPC.recordingControlsExpanded, expanded),
   fitRecorderHeight: (height) => ipcRenderer.send(IPC.fitRecorderHeight, height),
+  listDiagnostics: () => ipcRenderer.invoke(IPC.diagnosticList),
+  getDiagnostic: (id) => ipcRenderer.invoke(IPC.diagnosticGet, id),
+  saveDiagnostic: (engagement) => ipcRenderer.invoke(IPC.diagnosticSave, engagement),
+  saveDiagnosticOpportunities: (engagementId, opportunities) =>
+    ipcRenderer.invoke(IPC.diagnosticSaveOpportunities, engagementId, opportunities),
+  deleteDiagnostic: (id) => ipcRenderer.invoke(IPC.diagnosticDelete, id),
+  suggestDiagnosticQuestionnaire: (engagementId) =>
+    ipcRenderer.invoke(IPC.diagnosticSuggestQuestionnaire, engagementId),
+  generateDiagnosticMap: (engagementId, processId, feedback) =>
+    ipcRenderer.invoke(IPC.diagnosticGenerateMap, engagementId, processId, feedback),
+  generateDiagnosticOpportunities: (engagementId, feedback) =>
+    ipcRenderer.invoke(IPC.diagnosticGenerateOpportunities, engagementId, feedback),
+  cancelDiagnostic: () => ipcRenderer.invoke(IPC.diagnosticCancel),
+  onDiagnosticProgress: (cb) => {
+    const listener = (_event, message) => cb(message);
+    ipcRenderer.on(IPC.diagnosticProgress, listener);
+    return () => ipcRenderer.removeListener(IPC.diagnosticProgress, listener);
+  },
+  exportDiagnostic: (engagementId, format) =>
+    ipcRenderer.invoke(IPC.diagnosticExport, engagementId, format),
 });

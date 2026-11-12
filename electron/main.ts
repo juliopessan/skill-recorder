@@ -19,6 +19,8 @@ import { createCollectors } from "./collectors";
 import { installCrashGuards } from "./crash-guards";
 import { Describer } from "./describer/describer";
 import { processSession } from "./pipeline";
+import { DiagnosticAgent } from "./diagnostic/agent";
+import { registerDiagnosticIpc } from "./diagnostic/ipc";
 import { registerIpc } from "./ipc";
 import { ImportManager } from "./imports/manager";
 import { isValidSessionId } from "./recorder/session-store";
@@ -151,6 +153,7 @@ function broadcast(channel: string, payload: unknown): void {
 }
 
 const describer = new Describer((progress) => broadcast(IPC.analyzeProgress, progress));
+const diagnosticAgent = new DiagnosticAgent();
 const builder = new SkillBuilder((progress) => broadcast(IPC.skillProgress, progress));
 const automationBuilder = new AutomationBuilder((progress) =>
   broadcast(IPC.automationProgress, progress),
@@ -382,6 +385,7 @@ app.whenReady().then(async () => {
       error instanceof Error ? error.message : error,
     );
   }
+  registerDiagnosticIpc(diagnosticAgent, (message) => broadcast(IPC.diagnosticProgress, message));
   registerIpc(
     recorder,
     describer,
@@ -606,6 +610,7 @@ app.on("before-quit", (event) => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   void describer.dispose();
+  void diagnosticAgent.dispose();
   imports.dispose();
   void builder.dispose();
   void automationBuilder.dispose();
