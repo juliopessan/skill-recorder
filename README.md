@@ -107,6 +107,51 @@ memory and temporary disk space. The initial local measurements and runtime chec
 Windows ARM64; other platforms and real meeting recordings require their own
 verification.
 
+## Diagnóstico de Prontidão para IA
+
+The **Diagnósticos** view (switch *Sessões | Diagnósticos* in the library) turns several
+recordings of a client's work into an **AI-readiness diagnostic**. Its premise is to take
+two steps back before adopting AI: *are the processes mapped, and is the data structured?*
+The view and the report are in Portuguese (pt-BR).
+
+A consultant, working entirely locally:
+
+1. **Creates a diagnostic** per client, with roles and their hourly cost.
+2. **Groups recordings into processes.** Each process links 2–5 analyzed sessions, so
+   variation between executions is measured, not assumed.
+3. **Answers a data-readiness questionnaire** on 5 axes: inventory, structure, quality,
+   access/integration, and governance/LGPD. Answers are suggested from what the recordings
+   show, and the consultant confirms them.
+4. **Generates a process map** with Copilot. Steps are merged across recordings, with the
+   median time **measured** from the recordings and the systems and data artifacts involved.
+5. **Confirms the cost baseline** (volume per month, people, role).
+6. **Generates opportunities in three waves.** Wave 1 structures data and processes, wave 2
+   automates deterministically, and wave 3 applies AI. Each opportunity carries
+   prerequisites, effort, risk and a squad of **at most 5 people**. Enablement (trainings,
+   AI workshops, literacy) and new fronts inside the client are proposed alongside.
+7. **Exports the report** as self-contained HTML or PDF, in the Avanade visual identity.
+
+The report covers:
+
+- an executive summary with process, data and AI-readiness scores and the
+  **AI maturity level** (1 Inicial → 5 Nativo em IA);
+- the process maps, the data diagnosis and the opportunities;
+- a 12-month roadmap, the squad proposal and an appendix of assumptions.
+
+**Every figure is auditable.** Money and scores are computed in code
+(`common/diagnostic-math.ts`), never by the model, and each number is labelled with its
+source: *medido*, *sugerido pela IA*, *confirmado* or *informado pelo consultor*.
+Cost-saving estimates are capped per wave (30% / 60% / 80%). When several opportunities
+touch the same step, only the largest saving counts, so totals are conservative.
+
+Until every assumption is confirmed, the report is marked
+**Rascunho — premissas não confirmadas**. The same happens when opportunities go stale
+after a map is regenerated.
+
+Weights, caps and maturity bands live in `common/diagnostic-config.ts`, and the config
+version is written into every report. Data is stored under `userData/engagements/`. The
+design and plan are in [`docs/superpowers/`](docs/superpowers/).
+
 ## Get started
 
 Skill Recorder is published as a **source release**: one command downloads a pinned Node.js
@@ -256,6 +301,7 @@ The Copilot **describer** and **builders** have a fixture-based eval suite; see
 npm run eval            # score the describer against synthetic recordings
 npm run eval:terminal   # score indexed terminal-output use and redaction
 npm run eval:builder    # score the skill/automation generalization
+npm run eval:diagnostic # score the diagnostic map/opportunity turns (add -- --judge for the LLM judge)
 ```
 
 ## Documentation
