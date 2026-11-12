@@ -288,6 +288,32 @@ read with **English-only** traineddata (the ASCII value is recognized and blurre
 even though the surrounding Japanese OCRs to garbage — validating the eng-only
 product decision).
 
+## Diagnostic evals (`evals/diagnostic/`)
+
+Evals for the two LLM turns of the AI Readiness Diagnostic (`DiagnosticAgent.generateMap`
+and `generateOpportunities`); everything else in the module is deterministic code and is
+covered by `npm test`. Scenarios (`diagnostic-reconciliation`, `diagnostic-onboarding`) are
+synthetic and video-less: finished `Analysis` objects plus an `Engagement`, written to a
+temp sessions dir, then run through the real agent.
+
+Scoring has two layers, deterministic first:
+
+1. **Deterministic checks** (always on, no LLM, `checks.ts`, unit-tested in `checks.test.ts`):
+   map step count / `sourceStepRefs` resolve / variants / key apps / required step keywords;
+   opportunities wave-3 prerequisites / wave-1 present / no currency / squad limits;
+   2-5 enablement items on a weak dimension; expansion evidence cites a recorded app or handoff.
+2. **LLM-as-judge** (`--judge` only): 1-5 rubric for map faithfulness, opportunity rationale
+   ("dados -> automação -> IA"), enablement relevance and pt-BR clarity.
+
+```bash
+npm run eval:diagnostic                       # deterministic checks only
+npm run eval:diagnostic -- --judge            # + LLM judge
+npm run eval:diagnostic -- --only=diagnostic-onboarding --model=<id>
+```
+
+Needs a signed-in GitHub Copilot CLI; when signed out it stops at the first scenario with
+"Copilot não autenticado" (exit 2). Results go to `evals/results/diagnostic-<stamp>.json`.
+
 ## Mock pages (`evals/mocks/`)
 
 Static, self-contained HTML fixtures matching the scenarios (`pricing.html`,

@@ -1,0 +1,407 @@
+{
+  "engagement": {
+    "version": 1,
+    "id": "eng-1",
+    "clientName": "Distribuidora Aurora Ltda.",
+    "createdAt": 1700000000000,
+    "currency": "BRL",
+    "roles": [
+      {
+        "id": "r1",
+        "name": "Analista financeiro",
+        "hourlyCost": 60
+      },
+      {
+        "id": "r2",
+        "name": "Assistente comercial",
+        "hourlyCost": 80
+      }
+    ],
+    "dataQuestionnaire": {
+      "inventory": {
+        "answer": 2,
+        "source": "confirmed",
+        "evidence": [
+          "Lista de sistemas fornecida pela TI em reunião de kick-off."
+        ]
+      },
+      "structure": {
+        "answer": 2,
+        "source": "confirmed",
+        "evidence": [
+          "50% dos passos observados têm dados estruturados."
+        ]
+      },
+      "quality": {
+        "answer": 3,
+        "source": "confirmed",
+        "evidence": [
+          "Retrabalho em 1 de 7 passos observados."
+        ]
+      },
+      "access": {
+        "answer": 2,
+        "source": "confirmed",
+        "evidence": [
+          "Extratos exigem download manual no portal."
+        ]
+      },
+      "governance": {
+        "answer": 1,
+        "source": "confirmed",
+        "evidence": []
+      }
+    },
+    "processes": [
+      {
+        "id": "p1",
+        "name": "Conciliação bancária",
+        "owner": "Financeiro",
+        "sessionIds": [
+          "sess-a",
+          "sess-b"
+        ],
+        "roleId": "r1",
+        "volumePerMonth": {
+          "value": 100,
+          "source": "confirmed"
+        },
+        "peopleCount": {
+          "value": 3,
+          "source": "confirmed"
+        },
+        "stale": false
+      },
+      {
+        "id": "p2",
+        "name": "Onboarding de clientes",
+        "owner": "Comercial",
+        "sessionIds": [
+          "sess-c"
+        ],
+        "roleId": "r2",
+        "volumePerMonth": {
+          "value": 40,
+          "source": "confirmed"
+        },
+        "peopleCount": {
+          "value": 2,
+          "source": "confirmed"
+        },
+        "stale": false
+      }
+    ],
+    "thesisText": "Antes de qualquer projeto de IA, a Aurora precisa de processos financeiros e comerciais padronizados e de dados que máquinas consigam ler. Este diagnóstico mostra onde estamos e em que ordem avançar."
+  },
+  "maps": {
+    "p1": {
+      "version": 1,
+      "processId": "p1",
+      "revision": 2,
+      "createdAt": 1700000000000,
+      "confidence": "high",
+      "steps": [
+        {
+          "id": "s1",
+          "title": "Baixar extrato no portal do banco",
+          "medianDurationMs": 1800000,
+          "apps": [
+            "Chrome",
+            "Portal Bancário"
+          ],
+          "dataArtifacts": [
+            "extrato.csv"
+          ],
+          "dataStructure": "semi",
+          "manualTransfer": true,
+          "rework": false,
+          "sourceStepRefs": [],
+          "owner": "Financeiro"
+        },
+        {
+          "id": "s2",
+          "title": "Copiar lançamentos para a planilha de conciliação",
+          "medianDurationMs": 3600000,
+          "apps": [
+            "Excel"
+          ],
+          "dataArtifacts": [
+            "conciliacao.xlsx"
+          ],
+          "dataStructure": "semi",
+          "manualTransfer": true,
+          "rework": true,
+          "sourceStepRefs": [],
+          "owner": "Financeiro"
+        },
+        {
+          "id": "s3",
+          "title": "Conferir saldos com o ERP",
+          "medianDurationMs": 1800000,
+          "apps": [
+            "ERP",
+            "Excel"
+          ],
+          "dataArtifacts": [],
+          "dataStructure": "structured",
+          "manualTransfer": false,
+          "rework": false,
+          "sourceStepRefs": [],
+          "owner": "Financeiro"
+        },
+        {
+          "id": "s4",
+          "title": "Registrar divergências por e-mail",
+          "medianDurationMs": 900000,
+          "apps": [
+            "Outlook"
+          ],
+          "dataArtifacts": [],
+          "dataStructure": "unstructured",
+          "manualTransfer": false,
+          "rework": false,
+          "sourceStepRefs": []
+        }
+      ],
+      "variants": [
+        {
+          "stepId": "s2",
+          "description": "Quando o extrato vem em PDF, os lançamentos são digitados manualmente."
+        },
+        {
+          "stepId": "s4",
+          "description": "Divergências acima de R$ 10 mil exigem aprovação da controladoria."
+        }
+      ]
+    },
+    "p2": {
+      "version": 1,
+      "processId": "p2",
+      "revision": 1,
+      "createdAt": 1700000100000,
+      "confidence": "medium",
+      "steps": [
+        {
+          "id": "t1",
+          "title": "Receber cadastro do cliente por e-mail",
+          "medianDurationMs": 600000,
+          "apps": [
+            "Outlook"
+          ],
+          "dataArtifacts": [],
+          "dataStructure": "unstructured",
+          "manualTransfer": false,
+          "rework": false,
+          "sourceStepRefs": [],
+          "owner": "Comercial"
+        },
+        {
+          "id": "t2",
+          "title": "Digitar dados no CRM",
+          "medianDurationMs": 1800000,
+          "apps": [
+            "CRM"
+          ],
+          "dataArtifacts": [],
+          "dataStructure": "structured",
+          "manualTransfer": true,
+          "rework": false,
+          "sourceStepRefs": [],
+          "owner": "Comercial"
+        },
+        {
+          "id": "t3",
+          "title": "Enviar e-mail de boas-vindas",
+          "medianDurationMs": 300000,
+          "apps": [
+            "Outlook"
+          ],
+          "dataArtifacts": [],
+          "dataStructure": "semi",
+          "manualTransfer": false,
+          "rework": false,
+          "sourceStepRefs": [],
+          "owner": "Comercial"
+        }
+      ],
+      "variants": []
+    }
+  },
+  "opportunities": [
+    {
+      "id": "o1",
+      "title": "Padronizar a importação de extratos bancários",
+      "processId": "p1",
+      "stepIds": [
+        "s2"
+      ],
+      "wave": 1,
+      "prerequisites": [],
+      "estimatedSavingsPct": {
+        "value": 0.3,
+        "source": "ai-suggested"
+      },
+      "effort": "S",
+      "risk": "low",
+      "rationale": "Eliminar a cópia manual padronizando o layout do extrato e um modelo único de planilha.",
+      "suggestedSquad": {
+        "roles": [
+          "Analista de dados"
+        ],
+        "weeks": 2
+      },
+      "hidden": false,
+      "order": 1
+    },
+    {
+      "id": "o2",
+      "title": "Automatizar a conciliação com regras determinísticas",
+      "processId": "p1",
+      "stepIds": [
+        "s1",
+        "s3"
+      ],
+      "wave": 2,
+      "prerequisites": [
+        "o1"
+      ],
+      "estimatedSavingsPct": {
+        "value": 0.5,
+        "source": "ai-suggested"
+      },
+      "effort": "M",
+      "risk": "medium",
+      "rationale": "Com o layout padronizado, regras fixas casam lançamentos e ERP sem intervenção humana.",
+      "suggestedSquad": {
+        "roles": [
+          "Engenheiro de automação",
+          "Analista de dados"
+        ],
+        "weeks": 6
+      },
+      "hidden": false,
+      "order": 2
+    },
+    {
+      "id": "o3",
+      "title": "Triagem de cadastros com IA",
+      "processId": "p2",
+      "stepIds": [
+        "t1",
+        "t2"
+      ],
+      "wave": 3,
+      "prerequisites": [
+        "o1",
+        "o2"
+      ],
+      "estimatedSavingsPct": {
+        "value": 0.7,
+        "source": "ai-suggested"
+      },
+      "effort": "L",
+      "risk": "high",
+      "rationale": "Extrair campos de e-mails livres e preencher o CRM exige dados e processos já estruturados.",
+      "suggestedSquad": {
+        "roles": [
+          "Engenheiro de IA",
+          "Engenheiro de automação",
+          "Product owner"
+        ],
+        "weeks": 10
+      },
+      "hidden": false,
+      "order": 3
+    },
+    {
+      "id": "o4",
+      "title": "Painel de divergências (oculta)",
+      "processId": "p1",
+      "stepIds": [
+        "s4"
+      ],
+      "wave": 1,
+      "prerequisites": [],
+      "estimatedSavingsPct": {
+        "value": 0.2,
+        "source": "ai-suggested"
+      },
+      "effort": "S",
+      "risk": "low",
+      "rationale": "Oportunidade oculta pelo consultor.",
+      "suggestedSquad": {
+        "roles": [
+          "Analista de dados"
+        ],
+        "weeks": 1
+      },
+      "hidden": true,
+      "order": 4
+    }
+  ],
+  "initiatives": {
+    "enablement": [
+      {
+        "id": "c1",
+        "title": "Letramento em IA para a liderança",
+        "format": "letramento",
+        "audience": "Diretoria e gestores",
+        "gap": "ia",
+        "rationale": "A prontidão para IA ainda é baixa; a liderança precisa de vocabulário comum para priorizar casos de uso com responsabilidade.",
+        "durationDays": 1,
+        "hidden": false,
+        "order": 0
+      },
+      {
+        "id": "c2",
+        "title": "Workshop de governança de dados",
+        "format": "workshop",
+        "audience": "TI e donos de dados do Financeiro",
+        "gap": "dados",
+        "rationale": "Governança foi o eixo mais fraco do questionário; definir donos, dicionário e regras de acesso antes de automatizar.",
+        "durationDays": 2,
+        "hidden": false,
+        "order": 1
+      },
+      {
+        "id": "c3",
+        "title": "Mentoria oculta",
+        "format": "mentoria",
+        "audience": "Analistas",
+        "gap": "processos",
+        "rationale": "Item oculto pelo consultor.",
+        "durationDays": 3,
+        "hidden": true,
+        "order": 2
+      }
+    ],
+    "expansion": [
+      {
+        "id": "x1",
+        "area": "Contas a pagar",
+        "rationale": "O ERP e o portal do banco aparecem nas gravações da conciliação, com repasses ao time de contas a pagar que ainda não foram mapeados.",
+        "evidence": [
+          "Passagem de bastão para contas a pagar observada na conciliação bancária.",
+          "Portal do banco usado também para agendar pagamentos."
+        ],
+        "relatedApps": [
+          "ERP",
+          "Portal do banco"
+        ],
+        "hidden": false,
+        "order": 0
+      },
+      {
+        "id": "x2",
+        "area": "Frente oculta",
+        "rationale": "Oculta.",
+        "evidence": [
+          "e"
+        ],
+        "relatedApps": [],
+        "hidden": true,
+        "order": 1
+      }
+    ]
+  }
+}
