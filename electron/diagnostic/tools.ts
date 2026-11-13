@@ -12,6 +12,7 @@ import {
   type ProcessMapSubmission,
 } from "../../common/diagnostic";
 import { aiReadinessScore, dataScore, overallProcessScore } from "../../common/diagnostic-math";
+import { roleKey } from "../../common/diagnostic-roles";
 import { validateOpportunities, validateSquadSize } from "../../common/diagnostic-rules";
 
 export type LinkedAnalysis = { sessionId: string; analysis: Analysis };
@@ -208,7 +209,7 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
   const getContext: Tool = {
     name: "get_diagnostic_context",
     description:
-      "Retorna o contexto do diagnóstico: processos (com os apps observados nas gravações), mapas de processo, questionário de dados, papéis (sem valores monetários), os três scores (processos, dados, prontidão para IA) e a tese do cliente.",
+      "Retorna o contexto do diagnóstico: processos (com os apps observados nas gravações), mapas de processo, questionário de dados, papéis (sem valores monetários), o catálogo de perfis de squad (squadRoleCatalog, só nomes), os três scores (processos, dados, prontidão para IA) e a tese do cliente.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
     handler: () => {
       const e = ctx.engagement;
@@ -221,6 +222,8 @@ export function buildOpportunityTools(ctx: OpportunityToolContext): Tool[] {
           scores: { process, data, ai: aiReadinessScore(process, data) },
           thesisText: e.thesisText,
           roles: e.roles.map((r) => ({ id: r.id, name: r.name })),
+          // Role NAMES that already have a rate. Never the rates themselves: money stays out of the model.
+          squadRoleCatalog: e.squadRates.map((r) => r.role.trim()).filter((r, i, all) => r && all.findIndex((x) => roleKey(x) === roleKey(r)) === i),
           dataQuestionnaire: e.dataQuestionnaire,
           processes: e.processes.map((p) => ({
             id: p.id,

@@ -91,7 +91,26 @@
         "stale": false
       }
     ],
-    "thesisText": "Antes de qualquer projeto de IA, a Aurora precisa de processos financeiros e comerciais padronizados e de dados que máquinas consigam ler. Este diagnóstico mostra onde estamos e em que ordem avançar."
+    "thesisText": "Antes de qualquer projeto de IA, a Aurora precisa de processos financeiros e comerciais padronizados e de dados que máquinas consigam ler. Este diagnóstico mostra onde estamos e em que ordem avançar.",
+    "squadRates": [
+      {
+        "role": "Analista de dados",
+        "weeklyRate": 3000
+      },
+      {
+        "role": "Engenheiro de automação",
+        "weeklyRate": 4000
+      },
+      {
+        "role": "Engenheiro de IA",
+        "weeklyRate": 5000
+      },
+      {
+        "role": "Product owner",
+        "weeklyRate": 3500
+      }
+    ],
+    "enablementDayRate": 2000
   },
   "maps": {
     "p1": {

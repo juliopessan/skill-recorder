@@ -1,7 +1,15 @@
 // Report model + self-contained HTML renderer for the AI Readiness Diagnostic.
 // Pure: no Electron / Node-only imports (also bundled for the renderer).
-import type { Enablement, Engagement, Expansion, Initiatives, Opportunity, Process, ProcessMap, ProcessMapStep, QuestionnaireAxis, Role, Source } from "./diagnostic";
-import { DEFAULT_THESIS_TEXT, DIAGNOSTIC_CONFIG, DIAGNOSTIC_CONFIG_VERSION, MATURITY_LEVELS, MAX_SQUAD_SIZE } from "./diagnostic-config";
+import type { Enablement, Engagement, Expansion, Initiatives, Opportunity, Process, ProcessMap, ProcessMapStep, QuestionnaireAxis, Role, Source, SquadRate } from "./diagnostic";
+import {
+  DEFAULT_THESIS_TEXT,
+  DIAGNOSTIC_CONFIG,
+  DIAGNOSTIC_CONFIG_VERSION,
+  MATURITY_LEVELS,
+  MAX_SQUAD_SIZE,
+  PAYBACK_DISPLAY_CAP_MONTHS,
+  WEEKS_PER_MONTH,
+} from "./diagnostic-config";
 import {
   aggregateSavings,
   aiMaturity,
@@ -9,14 +17,19 @@ import {
   dataScore,
   observedStructuredRatio,
   opportunityReadiness,
+  opportunityInvestments,
   opportunitySavings,
   overallProcessScore,
+  paybackMonths,
   processMonthlyCost,
   processScore,
+  programInvestment,
+  programReturn,
   weakestDimension,
   type AiMaturity,
 } from "./diagnostic-math";
-import { draftReasons, isQuickWin, prerequisitePath, squadByWave } from "./diagnostic-rules";
+import { draftReasons, isQuickWin, prerequisitePath } from "./diagnostic-rules";
+import { roleKey } from "./diagnostic-roles";
 import { REPORT_CSS } from "./diagnostic-report-style";
 import {
   AXIS_LABELS,
@@ -38,6 +51,12 @@ export interface ReportOpportunity extends Opportunity {
   capped: boolean;
   readiness: number;
   quickWin: boolean;
+  /** Share of its wave's squad cost (pro rata by weeks); null when a rate is missing. */
+  investment: number | null;
+  /** Investment ÷ this opportunity's monthly savings, in months; null when not computable. */
+  paybackMonths: number | null;
+  /** True when the payback is beyond the 36-month display cap. */
+  paybackOverCap: boolean;
   /** Transitive prerequisites, dependencies first. Hidden opportunities are omitted. */
   prerequisitePath: Opportunity[];
 }
@@ -76,6 +95,29 @@ export interface ReportWaveSquad {
   roles: string[];
   count: number;
   max: number;
+  /** Sum of the wave's opportunity weeks. */
+  weeks: number;
+  /** Squad cost of the whole wave; null when a role has no rate. */
+  cost: number | null;
+}
+
+/** Program-level cost and return. Every figure is null when it cannot be computed in full. */
+export interface ReportInvestment {
+  squadRates: SquadRate[];
+  enablementDayRate?: number;
+  squadCost: number | null;
+  /** Visible enablement days × day rate; 0 when no day rate is set. */
+  enablementCost: number;
+  enablementDays: number;
+  total: number | null;
+  /** Visible squad roles without a rate. */
+  missingRoles: string[];
+  paybackMonths: number | null;
+  paybackOverCap: boolean;
+  /** Why payback / result are not shown (pt-BR), or null when they are. */
+  note: string | null;
+  deliveryMonths: number;
+  netOver36Months: number | null;
 }
 
 export interface DiagnosticReport {
@@ -97,6 +139,8 @@ export interface DiagnosticReport {
   squad: { roles: ReportSquadRole[]; weeksByWave: { wave: 1 | 2 | 3; weeks: number }[]; totalWeeks: number };
   /** Distinct roles per wave among visible opportunities, against the squad cap. */
   squadByWave: ReportWaveSquad[];
+  /** Squad cost, payback and result over 36 months. */
+  investment: ReportInvestment;
   /** Visible enablement items, by order. Never part of money totals. */
   enablement: Enablement[];
   /** Visible new fronts, by order. Never part of money totals. */
@@ -141,6 +185,13 @@ function buildKpis(e: Engagement, m: { cost: number; steps: ProcessMapStep[]; ra
   ];
 }
 
+const monthsFmt = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** "27,5 meses", or "> 36 meses" beyond the cap, or "—" when not computable. */
+export function formatPayback(months: number | null, overCap: boolean): string {
+  if (overCap) return `> ${PAYBACK_DISPLAY_CAP_MONTHS} meses`;
+  return months === null || !Number.isFinite(months) ? "—" : `${monthsFmt.format(months)} meses`;
+}
+
 function buildAssumptions(e: Engagement, processes: ReportProcess[], items: ReportOpportunity[]): DiagnosticReport["assumptions"] {
   const out: DiagnosticReport["assumptions"] = [];
   for (const p of processes) {
@@ -165,6 +216,12 @@ function buildAssumptions(e: Engagement, processes: ReportProcess[], items: Repo
       value: `${pct(o.estimatedSavingsPct.value)} pedido, ${pct(o.appliedPct)} aplicado (teto da onda ${o.wave}: ${pct(cap)})`,
       source: o.estimatedSavingsPct.source,
     });
+  }
+  for (const r of e.squadRates) {
+    out.push({ label: `Tarifa semanal do perfil "${r.role}"`, value: `${formatCurrency(r.weeklyRate, e.currency)}/semana`, source: "consultant" });
+  }
+  if (e.enablementDayRate !== undefined) {
+    out.push({ label: "Custo por dia de capacitação", value: `${formatCurrency(e.enablementDayRate, e.currency)}/dia`, source: "consultant" });
   }
   return out;
 }
@@ -205,15 +262,21 @@ export function buildReportModel(
   const visible = opps
     .filter((o) => !o.hidden && isWave(o.wave))
     .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const allocations = opportunityInvestments(visible, e.squadRates);
   const items: ReportOpportunity[] = visible.map((o) => {
     const p = procs.get(o.processId);
     const map = maps[o.processId];
     const role = p?.roleId ? roles.get(p.roleId) : undefined;
     const sav = p && map ? opportunitySavings(o, map, p, role) : { monthlyCostToday: 0, monthlySavings: 0, appliedPct: 0, capped: false };
+    const investment = allocations.get(o.id) ?? null;
+    const payback = paybackMonths(investment, sav.monthlySavings);
     return {
       ...o,
       processName: p?.name ?? o.processId,
       ...sav,
+      investment,
+      paybackMonths: payback === null ? null : money2(payback),
+      paybackOverCap: payback !== null && payback > PAYBACK_DISPLAY_CAP_MONTHS,
       readiness: opportunityReadiness(o, scoreP, scoreD),
       // Hidden prerequisites still block the quick win, but are never listed.
       quickWin: isQuickWin(o, opps) && !(o.wave === 3 && o.prerequisites.length > 0),
@@ -230,7 +293,7 @@ export function buildReportModel(
     for (const raw of o.suggestedSquad.roles) {
       const name = raw.trim();
       if (!name) continue;
-      const key = name.toLowerCase();
+      const key = roleKey(name);
       const r = roleMap.get(key) ?? { name, opportunities: 0, waves: [] };
       r.opportunities += 1;
       if (!r.waves.includes(o.wave)) r.waves.push(o.wave);
@@ -239,6 +302,30 @@ export function buildReportModel(
   }
   const squadRoles = [...roleMap.values()].map((r) => ({ ...r, waves: [...r.waves].sort((a, b) => a - b) }));
   const weeksByWave = roadmap.map((w) => ({ wave: w.wave, weeks: w.items.reduce((a, o) => a + o.suggestedSquad.weeks, 0) }));
+
+  const enablement = byOrder(initiatives.enablement);
+  const plan = programInvestment(visible, e.squadRates, enablement, e.enablementDayRate);
+  const monthlySavings = aggregateSavings(visible, maps, e);
+  const ret = programReturn(plan.total, monthlySavings, plan.waves.reduce((a, w) => a + w.weeks, 0));
+  const investment: ReportInvestment = {
+    squadRates: e.squadRates.map((r) => ({ ...r })),
+    enablementDayRate: e.enablementDayRate,
+    squadCost: plan.squadCost,
+    enablementCost: plan.enablementCost,
+    enablementDays: enablement.reduce((a, x) => a + x.durationDays, 0),
+    total: plan.total,
+    missingRoles: plan.missingRoles,
+    paybackMonths: ret.paybackMonths === null ? null : money2(ret.paybackMonths),
+    paybackOverCap: ret.paybackOverCap,
+    note:
+      plan.total === null
+        ? "tarifa do squad não informada"
+        : ret.paybackMonths === null
+          ? "sem economia mensal calculada"
+          : null,
+    deliveryMonths: money2(ret.deliveryMonths),
+    netOver36Months: ret.netOver36Months,
+  };
 
   return {
     generatedAt: now,
@@ -249,15 +336,16 @@ export function buildReportModel(
     scores,
     maturity,
     observedStructuredRatio: ratio,
-    totals: { monthlyCost, monthlySavings: aggregateSavings(visible, maps, e) },
+    totals: { monthlyCost, monthlySavings },
     savingsAreEstimates: items.some((o) => o.estimatedSavingsPct.source !== "confirmed"),
     processes,
     opportunities: items,
     topRecommendations: [...items].sort((a, b) => b.monthlySavings - a.monthlySavings || a.order - b.order).slice(0, 3),
     roadmap,
     squad: { roles: squadRoles, weeksByWave, totalWeeks: weeksByWave.reduce((a, w) => a + w.weeks, 0) },
-    squadByWave: squadByWave(visible).map((w) => ({ ...w, count: w.roles.length, max: MAX_SQUAD_SIZE })),
-    enablement: byOrder(initiatives.enablement),
+    squadByWave: plan.waves.map((w) => ({ wave: w.wave, roles: w.roles, count: w.roles.length, max: MAX_SQUAD_SIZE, weeks: w.weeks, cost: w.cost })),
+    investment,
+    enablement,
     expansion: byOrder(initiatives.expansion),
     kpis: buildKpis(e, { cost: monthlyCost, steps: allMaps.flatMap((m) => m.steps), ratio, scores }),
     assumptions: buildAssumptions(e, processes, items),
@@ -327,7 +415,30 @@ function renderCover({ m, e, date }: Ctx): string {
 </section>`;
 }
 
-function renderSummary({ m, cur }: Ctx): string {
+function investmentTiles({ m, cur }: Ctx): string {
+  const inv = m.investment;
+  const why = (text: string): string => `<div class="small muted">${esc(text)}</div>`;
+  const invSub =
+    inv.total === null
+      ? why(`Não calculado: ${inv.note ?? "tarifa do squad não informada"}`)
+      : inv.enablementCost > 0
+        ? why(`Squad ${cur(inv.squadCost ?? 0)} + capacitação ${cur(inv.enablementCost)}`)
+        : "";
+  const paybackText = formatPayback(inv.paybackMonths, inv.paybackOverCap);
+  const paybackSub = inv.paybackMonths === null ? why(`Não calculado: ${inv.note ?? "sem economia mensal calculada"}`) : why("Investimento ÷ economia mensal potencial");
+  const netSub =
+    inv.netOver36Months === null
+      ? why(`Não calculado: ${inv.note ?? "tarifa do squad não informada"}`)
+      : why(`Economia a partir da entrega (${monthsFmt.format(inv.deliveryMonths)} meses)`);
+  return `<div class="kpi k3">
+    <div class="card"><div class="tag">Investimento do programa</div><div class="num">${inv.total === null ? "Não calculado" : esc(cur(inv.total))}</div>${invSub}</div>
+    <div class="card"><div class="tag">Payback</div><div class="num">${esc(paybackText)}</div>${paybackSub}</div>
+    <div class="card"><div class="tag">Resultado em ${PAYBACK_DISPLAY_CAP_MONTHS} meses</div><div class="num">${inv.netOver36Months === null ? "—" : esc(cur(inv.netOver36Months))}</div>${netSub}</div>
+  </div>`;
+}
+
+function renderSummary(ctx: Ctx): string {
+  const { m, cur } = ctx;
   const score = (label: string, v: number): string =>
     `<div class="card score"><div class="tag">${label}</div><div class="num">${v}<span>/100</span></div><div class="bar"><i style="width:${v}%"></i></div></div>`;
   const banner = m.draft
@@ -352,6 +463,7 @@ function renderSummary({ m, cur }: Ctx): string {
     <div class="card"><div class="tag">Custo mensal mapeado</div><div class="num">${esc(cur(m.totals.monthlyCost))}</div></div>
     <div class="card"><div class="tag">Economia mensal potencial</div><div class="num">${esc(cur(m.totals.monthlySavings))}</div>${m.savingsAreEstimates ? prov : ""}</div>
   </div>
+  ${investmentTiles(ctx)}
   <h3>Principais recomendações</h3>
   ${recs}
 </section>`;
@@ -445,9 +557,11 @@ function renderCard({ cur, num }: Ctx, o: ReportOpportunity): string {
     `<span class="badge">Esforço ${EFFORT.has(o.effort) ? o.effort : "—"}</span>` +
     `<span class="badge">Risco ${esc(RISK[o.risk] ?? "—")}</span>`;
   const provenance = o.estimatedSavingsPct.source !== "confirmed" ? prov : "";
+  const invText = o.investment === null ? "Não calculado" : cur(o.investment);
+  const paybackText = formatPayback(o.paybackMonths, o.paybackOverCap);
   return `<div class="card opp"><h3>${num.get(o.id)}. ${esc(o.title)}</h3><div>${badges}</div>
 <p class="small muted">Processo: ${esc(o.processName)}</p>
-<div class="grid"><div>Custo atual<b>${esc(cur(o.monthlyCostToday))}/mês</b></div><div>Economia<b>${esc(cur(o.monthlySavings))}/mês</b>${provenance}</div><div>Prontidão<b>${o.readiness}/100</b></div><div>Economia aplicada<b>${pct(o.appliedPct)}${o.capped ? " (teto)" : ""}</b></div></div>
+<div class="grid"><div>Custo atual<b>${esc(cur(o.monthlyCostToday))}/mês</b></div><div>Economia<b>${esc(cur(o.monthlySavings))}/mês</b>${provenance}</div><div>Prontidão<b>${o.readiness}/100</b></div><div>Economia aplicada<b>${pct(o.appliedPct)}${o.capped ? " (teto)" : ""}</b></div><div>Investimento alocado<b>${esc(invText)}</b></div><div>Payback<b>${esc(paybackText)}</b></div></div>
 <p>${esc(o.rationale)}</p>${path}</div>`;
 }
 
@@ -481,7 +595,9 @@ function renderRoadmap({ m, cur, num }: Ctx): string {
   return `<section id="roadmap"><h2>Roadmap de 12 meses</h2><p class="lead">Três ondas: primeiro o terreno (dados, processos e capacitação das pessoas), depois a automação determinística e, só então, a IA.</p>${waves}</section>`;
 }
 
-function renderSquad({ m }: Ctx): string {
+function renderSquad({ m, cur }: Ctx): string {
+  const inv = m.investment;
+  const costCell = (c: number | null): string => (c === null ? `<span class="muted">não calculado</span>` : esc(cur(c)));
   const roles = m.squad.roles.length
     ? `<table><thead><tr><th>Perfil</th><th class="r">Oportunidades</th><th>Ondas</th></tr></thead><tbody>${m.squad.roles
         .map((r) => `<tr><td>${esc(r.name)}</td><td class="r">${r.opportunities}</td><td>${r.waves.join(", ")}</td></tr>`)
@@ -492,16 +608,21 @@ function renderSquad({ m }: Ctx): string {
       const sq = m.squadByWave.find((x) => x.wave === w.wave);
       const people = sq ? `${sq.count} de ${sq.max} pessoas` : "—";
       const names = sq?.roles.length ? sq.roles.map(esc).join(", ") : `<span class="muted">sem perfis</span>`;
-      return `<tr><td>${WAVES[w.wave].title} (${WAVES[w.wave].span})</td><td>${names}</td><td class="r nowrap">${people}</td><td class="r nowrap">${w.weeks} semanas</td></tr>`;
+      return `<tr><td>${WAVES[w.wave].title} (${WAVES[w.wave].span})</td><td>${names}</td><td class="r nowrap">${people}</td><td class="r nowrap">${w.weeks} semanas</td><td class="r nowrap">${costCell(sq?.cost ?? null)}</td></tr>`;
     })
     .join("");
+  const extra =
+    inv.enablementDayRate !== undefined && inv.total !== null
+      ? `<tr><td colspan="4">Capacitação (${days(inv.enablementDays)} × ${esc(cur(inv.enablementDayRate))}/dia)</td><td class="r nowrap">${esc(cur(inv.enablementCost))}</td></tr><tr><td colspan="4"><strong>Investimento do programa</strong></td><td class="r nowrap"><strong>${esc(cur(inv.total))}</strong></td></tr>`
+      : "";
   const kpis = m.kpis
     .map((k) => `<tr><td>${esc(k.label)}</td><td class="r">${esc(k.baseline)}</td><td>${k.direction}</td></tr>`)
     .join("");
   return `<section id="squad" class="pb"><h2>Proposta de squad</h2><p class="lead">Squads enxutos, de até ${MAX_SQUAD_SIZE} pessoas por onda. Perfis sugeridos pelas oportunidades e indicadores para medir o resultado contra a linha de base deste diagnóstico.</p>
 <h3>Perfis</h3>${roles}
-<h3>Squad e duração por onda</h3><table><thead><tr><th>Onda</th><th>Perfis</th><th class="r">Squad</th><th class="r">Duração</th></tr></thead><tbody>${weeks}<tr><td colspan="3"><strong>Total</strong></td><td class="r nowrap"><strong>${m.squad.totalWeeks} semanas</strong></td></tr></tbody></table>
+<h3>Squad e duração por onda</h3><table><thead><tr><th>Onda</th><th>Perfis</th><th class="r">Squad</th><th class="r">Duração</th><th class="r">Custo do squad</th></tr></thead><tbody>${weeks}<tr><td colspan="3"><strong>Total</strong></td><td class="r nowrap"><strong>${m.squad.totalWeeks} semanas</strong></td><td class="r nowrap"><strong>${costCell(inv.squadCost)}</strong></td></tr>${extra}</tbody></table>
 <p class="small muted">Premissa: squads de no máximo ${MAX_SQUAD_SIZE} pessoas; as oportunidades de uma mesma onda são entregues em sequência pelo mesmo squad.</p>
+<p class="small muted">Premissa de custo: o squad é reservado durante toda a onda. Cada perfil da onda é pago por todas as semanas somadas das oportunidades da onda, mesmo nas semanas em que atua pouco; o custo da onda é a soma de tarifa semanal × semanas de cada perfil.${inv.missingRoles.length ? ` Sem tarifa informada: ${esc(inv.missingRoles.join(", "))}.` : ""}</p>
 <h3>KPIs e linha de base</h3><table><thead><tr><th>Indicador</th><th class="r">Linha de base</th><th>Meta</th></tr></thead><tbody>${kpis}</tbody></table></section>`;
 }
 
@@ -518,7 +639,12 @@ function renderAppendix({ m, date }: Ctx): string {
     `Prontidão para IA: ${pct(w.aiWeights.min)} do menor score + ${pct(w.aiWeights.mean)} da média.`,
     `Maturidade em IA pela prontidão: ${MATURITY_LEVELS.map((l) => `nível ${l.level} ${l.name} (a partir de ${l.min})`).join(", ")}.`,
     `Squad: no máximo ${MAX_SQUAD_SIZE} pessoas por oportunidade e por onda (perfis distintos).`,
-    `Capacitação e novas frentes não entram no custo nem na economia.`,
+    `Capacitação e novas frentes não entram na economia. A capacitação só entra no investimento quando o consultor informa o custo por dia; novas frentes nunca têm valor.`,
+    `Investimento: o squad de cada onda é reservado durante toda a onda; custo da onda = soma, por perfil distinto, de tarifa semanal × semanas da onda (soma das semanas das oportunidades visíveis). Tarifas são sempre informadas pelo consultor.`,
+    `Investimento alocado a cada oportunidade: custo da onda dividido pro rata pelas semanas da oportunidade, de modo que os cartões somam o custo da onda.`,
+    `Semanas por mês: 52 ÷ 12 (${monthsFmt.format(WEEKS_PER_MONTH)}). A economia começa após a entrega: meses de entrega = semanas totais do squad ÷ semanas por mês.`,
+    `Payback = investimento ÷ economia mensal (simples); acima de ${PAYBACK_DISPLAY_CAP_MONTHS} meses é exibido como "> ${PAYBACK_DISPLAY_CAP_MONTHS} meses". Resultado em ${PAYBACK_DISPLAY_CAP_MONTHS} meses = máx(0; ${PAYBACK_DISPLAY_CAP_MONTHS} − meses de entrega) × economia mensal − investimento.`,
+    `Falta de tarifa para qualquer perfil visível: investimento, payback e resultado não são calculados (nunca parcialmente) e o relatório fica como rascunho.`,
     `Score de processo: penalidades por variante (${p.perVariant} pontos), transferência manual (até ${p.manualTransferRatio}), retrabalho (até ${p.reworkRatio}) e passos sem responsável (até ${p.unownedRatio}).`,
   ];
   return `<section id="premissas" class="pb"><h2>Apêndice de premissas</h2><p class="lead">Todo número deste relatório e a origem dele. Parâmetros do modelo na versão ${m.configVersion}.</p>

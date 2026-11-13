@@ -128,7 +128,7 @@ test("submit_process_map: valid payload submits once with duration and apps reco
 });
 
 const engagement: Engagement = {
-  version: 1, id: "e1", clientName: "ACME", createdAt: 1, currency: "BRL",
+  version: 1, id: "e1", clientName: "ACME", createdAt: 1, currency: "BRL", squadRates: [],
   roles: [{ id: "r1", name: "Analista", hourlyCost: 123.45 }],
   dataQuestionnaire: {},
   processes: [
@@ -279,4 +279,27 @@ test("instructions: squad cap, enablement and expansion rules", () => {
   assert.match(OPPORTUNITY_INSTRUCTIONS, /enablement/);
   assert.match(OPPORTUNITY_INSTRUCTIONS, /expansion/);
   assert.match(OPPORTUNITY_INSTRUCTIONS, /letramento em IA/i);
+});
+
+test("get_diagnostic_context lists the squad role names that have a rate, never the rates", async () => {
+  const tools = buildOpportunityTools({
+    engagement: {
+      ...engagement,
+      squadRates: [{ role: "Engenheiro de IA", weeklyRate: 7654.32 }, { role: "engenheiro de ia ", weeklyRate: 1 }, { role: "Analista de dados", weeklyRate: 4321 }],
+      enablementDayRate: 987.65,
+    },
+    maps: { p1: pmap },
+    onSubmit: () => undefined,
+  });
+  const raw = text(await invoke(tools, "get_diagnostic_context"));
+  const ctx = JSON.parse(raw);
+  assert.deepEqual(ctx.squadRoleCatalog, ["Engenheiro de IA", "Analista de dados"]);
+  for (const n of ["7654", "4321", "987", "weeklyRate", "enablementDayRate", "squadRates"]) assert.ok(!raw.includes(n), n);
+  const empty = JSON.parse(text(await invoke(oppTools().tools, "get_diagnostic_context")));
+  assert.deepEqual(empty.squadRoleCatalog, []);
+});
+
+test("instructions: reuse the catalog role names exactly and never invent rates", () => {
+  assert.match(OPPORTUNITY_INSTRUCTIONS, /squadRoleCatalog/);
+  assert.match(OPPORTUNITY_INSTRUCTIONS, /nunca devem ser estimados/);
 });

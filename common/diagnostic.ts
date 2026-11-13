@@ -145,6 +145,13 @@ export const OpportunitiesSubmissionSchema = z.object({
 });
 export type OpportunitiesSubmission = z.infer<typeof OpportunitiesSubmissionSchema>;
 
+/** What one squad role costs per week. Entered by the consultant, never invented by the app or the model. */
+export const SquadRateSchema = z.object({
+  role: z.string().refine((s) => s.trim().length > 0, { message: "role must not be blank" }),
+  weeklyRate: z.number().finite().nonnegative(),
+});
+export type SquadRate = z.infer<typeof SquadRateSchema>;
+
 export const EngagementSchema = z.object({
   version: z.literal(1),
   id: z.string(),
@@ -155,5 +162,9 @@ export const EngagementSchema = z.object({
   dataQuestionnaire: DataQuestionnaireSchema,
   processes: z.array(ProcessSchema),
   thesisText: z.string(),
+  /** Weekly rate per squad role (matched case-insensitively, trimmed). Old files load as []. */
+  squadRates: z.array(SquadRateSchema).default([]),
+  /** Optional price of one enablement day; when set, enablement enters the program investment. */
+  enablementDayRate: z.number().finite().nonnegative().optional(),
 });
 export type Engagement = z.infer<typeof EngagementSchema>;

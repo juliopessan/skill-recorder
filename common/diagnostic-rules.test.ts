@@ -76,6 +76,7 @@ test("validateOpportunities rejects unknown prerequisite and self reference", ()
 
 const engagement = (over: Record<string, unknown> = {}): Engagement => ({
   version: 1,
+  squadRates: [],
   id: "e1",
   clientName: "ACME",
   createdAt: 1,
@@ -222,4 +223,19 @@ test("draftReasons adds one pt-BR reason per process with stale opportunities", 
   assert.equal(stale.length, 1);
   assert.ok(stale[0]!.includes("gere as oportunidades de novo"));
   assert.deepEqual(draftReasons(engagement(), maps, [opp("a", { stepIds: ["s1"] })]), []);
+});
+
+test("draftReasons names the visible squad roles without a rate, once, with the exact text", () => {
+  const maps = { p1: mkMap([step("s1")]) };
+  const opps = [
+    opp("a", { suggestedSquad: { roles: ["Dev", "QA"], weeks: 2 } }),
+    opp("b", { wave: 2, suggestedSquad: { roles: ["dev ", "PO"], weeks: 2 } }),
+    opp("h", { hidden: true, suggestedSquad: { roles: ["Oculto"], weeks: 2 } }),
+  ];
+  const e = engagement();
+  e.squadRates = [{ role: "QA", weeklyRate: 1000 }];
+  const reasons = draftReasons(e, maps, opps);
+  assert.deepEqual(reasons, ["Tarifa do squad não informada para: Dev, PO — o investimento e o payback não foram calculados."]);
+  e.squadRates = [{ role: " dev", weeklyRate: 1 }, { role: "QA", weeklyRate: 1 }, { role: "PO", weeklyRate: 0 }];
+  assert.deepEqual(draftReasons(e, maps, opps), []);
 });

@@ -83,6 +83,7 @@ export function makeEngagement(
     createdAt: T0,
     currency: "BRL",
     roles: [{ id: ROLE_ID, name: "Analista financeiro", hourlyCost: 60 }],
+    squadRates: [],
     dataQuestionnaire: {
       inventory: answer(dataAnswers.inventory),
       structure: answer(dataAnswers.structure),

@@ -7,7 +7,10 @@ import type {
   QuestionnaireAxis,
 } from "./diagnostic";
 import { MAX_SQUAD_SIZE } from "./diagnostic-config";
-import { observedStructuredRatio } from "./diagnostic-math";
+import { missingSquadRates, observedStructuredRatio } from "./diagnostic-math";
+import { distinctRoles, squadByWave } from "./diagnostic-roles";
+
+export { squadByWave };
 
 export type ValidationResult = { ok: true } | { ok: false; error: string };
 
@@ -95,6 +98,10 @@ export function draftReasons(e: Engagement, maps: Record<string, ProcessMap>, op
       reasons.push(`Há oportunidades desatualizadas após regenerar o mapa de "${p.name}" — gere as oportunidades de novo.`);
     }
   }
+  const missingRates = missingSquadRates(opps, e.squadRates);
+  if (missingRates.length > 0) {
+    reasons.push(`Tarifa do squad não informada para: ${missingRates.join(", ")} — o investimento e o payback não foram calculados.`);
+  }
   return reasons;
 }
 
@@ -145,25 +152,6 @@ export function suggestQuestionnaire(maps: ProcessMap[]): DataQuestionnaire {
     access: answer(manual, "dos passos exigem transferência manual de dados", true),
     quality: answer(rework, "dos passos envolvem retrabalho", true),
   };
-}
-
-const roleKey = (r: string): string => r.trim().toLowerCase();
-
-function distinctRoles(roles: string[], into: Map<string, string> = new Map()): Map<string, string> {
-  for (const raw of roles) {
-    const name = raw.trim();
-    if (name && !into.has(roleKey(name))) into.set(roleKey(name), name);
-  }
-  return into;
-}
-
-/** Distinct roles (case-insensitive, trimmed, first spelling kept) per wave among visible opportunities. */
-export function squadByWave(opps: Opportunity[]): { wave: 1 | 2 | 3; roles: string[] }[] {
-  return ([1, 2, 3] as const).map((wave) => {
-    const m = new Map<string, string>();
-    for (const o of opps) if (!o.hidden && o.wave === wave) distinctRoles(o.suggestedSquad.roles, m);
-    return { wave, roles: [...m.values()] };
-  });
 }
 
 /** Squads hold at most MAX_SQUAD_SIZE people, per opportunity and per wave. */

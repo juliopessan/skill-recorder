@@ -33,6 +33,7 @@ const engagement = (over: Partial<Engagement> = {}): Engagement => ({
   processes: [{ id: "p1", name: "P1", sessionIds: ["s1"], stale: false }],
   thesisText: "",
   ...over,
+  squadRates: over.squadRates ?? [],
 });
 
 const analysisJson = (sessionId: string) => ({

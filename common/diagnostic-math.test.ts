@@ -7,7 +7,13 @@ import {
   aiMaturity,
   aiReadinessScore,
   dataScore,
+  missingSquadRates,
   observedStructuredRatio,
+  opportunityInvestments,
+  paybackMonths,
+  programInvestment,
+  programReturn,
+  waveInvestments,
   opportunityReadiness,
   overallProcessScore,
   opportunitySavings,
@@ -137,6 +143,7 @@ test("opportunityReadiness per wave", () => {
 
 const aggEngagement = (): Engagement => ({
   version: 1,
+  squadRates: [],
   id: "e",
   clientName: "c",
   createdAt: 0,
@@ -190,4 +197,100 @@ test("weakestDimension picks the lower score; ties go to dados", () => {
   assert.equal(weakestDimension(30, 60), "processos");
   assert.equal(weakestDimension(60, 30), "dados");
   assert.equal(weakestDimension(50, 50), "dados");
+});
+
+// --- squad cost and return ---------------------------------------------------------------------
+
+const sq = (id: string, wave: 1 | 2 | 3, roles: string[], weeks: number, over: Partial<Opportunity> = {}): Opportunity =>
+  opp({ id, wave, suggestedSquad: { roles, weeks }, ...over });
+const rate = (role: string, weeklyRate: number) => ({ role, weeklyRate });
+
+test("wave cost: 3 roles at 4000/week over 5 weeks is 60000, split pro rata by weeks", () => {
+  const roles = ["Dev", "QA", "PO"];
+  const opps = [sq("a", 1, roles, 2), sq("b", 1, roles, 3)];
+  const rates = [rate("Dev", 4000), rate("QA", 4000), rate("PO", 4000)];
+  const w = waveInvestments(opps, rates)[0]!;
+  assert.equal(w.weeks, 5);
+  assert.equal(w.cost, 60000);
+  assert.deepEqual([...opportunityInvestments(opps, rates)], [["a", 24000], ["b", 36000]]);
+  assert.equal(waveInvestments(opps, rates)[1]!.cost, 0); // empty wave costs nothing
+});
+
+test("the squad is booked for the whole wave: a role used by one opportunity is paid for every week", () => {
+  const opps = [sq("a", 2, ["Dev"], 2), sq("b", 2, ["Dev", "QA"], 4)];
+  const rates = [rate("Dev", 1000), rate("QA", 500)];
+  // 6 wave weeks x (1000 + 500), not 2x1000 + 4x1500
+  assert.equal(waveInvestments(opps, rates)[1]!.cost, 9000);
+});
+
+test("role names match case-insensitively and trimmed; hidden opportunities are ignored", () => {
+  const opps = [sq("a", 1, ["Analista de dados "], 2), sq("h", 1, ["Segredo"], 9, { hidden: true })];
+  const rates = [rate("analista de DADOS", 100)];
+  assert.equal(waveInvestments(opps, rates)[0]!.cost, 200);
+  assert.deepEqual(missingSquadRates(opps, rates), []);
+});
+
+test("pro rata allocation adds up to the wave cost to the cent", () => {
+  const opps = [sq("a", 1, ["Dev"], 1), sq("b", 1, ["Dev"], 1), sq("c", 1, ["Dev"], 1)];
+  const alloc = opportunityInvestments(opps, [rate("Dev", 100)]); // 300 / 3 weeks, odd split of cents
+  assert.equal([...alloc.values()].reduce<number>((a, v) => a + (v ?? 0), 0), 300);
+  const odd = opportunityInvestments(opps, [rate("Dev", 100.01)]);
+  assert.equal(Math.round([...odd.values()].reduce<number>((a, v) => a + (v ?? 0), 0) * 100) / 100, 300.03);
+});
+
+test("a missing rate makes cost, allocation and total null, never partial", () => {
+  const opps = [sq("a", 1, ["Dev"], 2), sq("b", 2, ["Dev", "QA"], 2)];
+  const rates = [rate("Dev", 1000)];
+  assert.deepEqual(missingSquadRates(opps, rates), ["QA"]);
+  const w = waveInvestments(opps, rates);
+  assert.equal(w[0]!.cost, 2000);
+  assert.equal(w[1]!.cost, null);
+  const alloc = opportunityInvestments(opps, rates);
+  assert.equal(alloc.get("a"), 2000);
+  assert.equal(alloc.get("b"), null);
+  const prog = programInvestment(opps, rates);
+  assert.equal(prog.squadCost, null);
+  assert.equal(prog.total, null);
+  assert.deepEqual(prog.missingRoles, ["QA"]);
+});
+
+test("program investment adds enablement days x day rate only when the rate is set", () => {
+  const opps = [sq("a", 1, ["Dev"], 2)];
+  const rates = [rate("Dev", 1000)];
+  const en = (id: string, durationDays: number, hidden = false) =>
+    ({ id, title: id, format: "workshop", audience: "x", gap: "ia", rationale: "", durationDays, hidden, order: 0 }) as const;
+  const items = [en("e1", 2), en("e2", 3), en("e3", 10, true)];
+  assert.equal(programInvestment(opps, rates, items).total, 2000);
+  assert.equal(programInvestment(opps, rates, items, 500).enablementCost, 2500);
+  assert.equal(programInvestment(opps, rates, items, 500).total, 4500);
+  assert.equal(programInvestment(opps, rates, items, 0).total, 2000);
+});
+
+test("payback is investment divided by monthly savings; null when unknown or savings are zero", () => {
+  assert.equal(paybackMonths(60000, 2000), 30);
+  assert.equal(paybackMonths(0, 2000), 0);
+  assert.equal(paybackMonths(null, 2000), null);
+  assert.equal(paybackMonths(60000, 0), null);
+  assert.equal(paybackMonths(60000, Number.NaN), null);
+});
+
+test("programReturn: delivery months, 36-month cap and net result", () => {
+  // 26 weeks = 6 months; savings start then: (36 - 6) x 2000 - 50000 = 10000
+  const r = programReturn(50000, 2000, 26);
+  assert.equal(r.deliveryMonths, 6);
+  assert.equal(r.paybackMonths, 25);
+  assert.equal(r.paybackOverCap, false);
+  assert.equal(r.netOver36Months, 10000);
+  // payback 60 months: over the cap, net negative
+  const bad = programReturn(120000, 2000, 26);
+  assert.equal(bad.paybackMonths, 60);
+  assert.equal(bad.paybackOverCap, true);
+  assert.equal(bad.netOver36Months, (36 - 6) * 2000 - 120000);
+  // delivery beyond the horizon: no savings inside it, net is minus the investment
+  assert.equal(programReturn(1000, 500, 52 * 4).netOver36Months, -1000);
+  // unknown investment or no savings
+  assert.deepEqual([programReturn(null, 2000, 26).paybackMonths, programReturn(null, 2000, 26).netOver36Months], [null, null]);
+  const none = programReturn(1000, 0, 26);
+  assert.equal(none.paybackMonths, null);
+  assert.equal(none.netOver36Months, -1000);
 });

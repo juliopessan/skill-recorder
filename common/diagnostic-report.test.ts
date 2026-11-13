@@ -4,7 +4,7 @@ import test from "node:test";
 
 import type { Engagement, Initiatives, Opportunity, ProcessMap } from "./diagnostic";
 import { DEFAULT_THESIS_TEXT, DIAGNOSTIC_CONFIG_VERSION } from "./diagnostic-config";
-import { buildReportModel, escapeHtml, renderReportHtml } from "./diagnostic-report";
+import { buildReportModel, escapeHtml, formatCurrency, formatPayback, renderReportHtml } from "./diagnostic-report";
 
 type Fixture = { engagement: Engagement; maps: Record<string, ProcessMap>; opportunities: Opportunity[]; initiatives: Initiatives };
 const load = (): Fixture =>
@@ -302,4 +302,122 @@ test("stale opportunities after a map regeneration make the report a draft with 
   const html = renderReportHtml(m, f.engagement, f.maps);
   assert.ok(html.includes("Rascunho — premissas não confirmadas"));
   assert.ok(html.includes(escapeHtml(reason!)));
+});
+
+// --- squad cost and return ---------------------------------------------------------------------
+
+const renderI = (f: Fixture): string =>
+  renderReportHtml(buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives), f.engagement, f.maps);
+const BRL = (n: number): string => escapeHtml(formatCurrency(n, "BRL"));
+
+test("investment and return match the hand computation on the fixture", () => {
+  const f = load();
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  // wave 1: 2 weeks x 3000 = 6000; wave 2: 6 weeks x (4000 + 3000) = 42000; wave 3: 10 weeks x (5000 + 4000 + 3500) = 125000
+  assert.deepEqual(m.squadByWave.map((w) => w.cost), [6000, 42000, 125000]);
+  assert.deepEqual(m.squadByWave.map((w) => w.weeks), [2, 6, 10]);
+  const inv = m.investment;
+  assert.equal(inv.squadCost, 173000);
+  assert.equal(inv.enablementDays, 3); // c3 is hidden
+  assert.equal(inv.enablementCost, 6000); // 3 days x 2000
+  assert.equal(inv.total, 179000);
+  assert.deepEqual(m.opportunities.map((o) => o.investment), [6000, 42000, 125000]);
+  assert.deepEqual(m.opportunities.map((o) => o.paybackMonths), [3.33, 14, 83.71]); // 6000/1800, 42000/3000, 125000/1493.33
+  assert.deepEqual(m.opportunities.map((o) => o.paybackOverCap), [false, false, true]);
+  assert.equal(inv.paybackMonths, 28.44); // 179000 / 6293.33
+  assert.equal(inv.paybackOverCap, false);
+  assert.equal(inv.deliveryMonths, 4.15); // 18 weeks / (52/12)
+  // (36 - 18*12/52) x 6293.33 - 179000
+  assert.equal(inv.netOver36Months, Math.round(((36 - (18 * 12) / 52) * 6293.33 - 179000) * 100) / 100);
+  assert.ok(Math.abs(inv.netOver36Months! - 21418) < 2);
+  assert.equal(inv.note, null);
+  // totals untouched by cost
+  assert.equal(m.totals.monthlyCost, 15900);
+  assert.equal(m.totals.monthlySavings, 6293.33);
+});
+
+test("the report shows investment, payback and result in the summary, cards, squad table and appendix", () => {
+  const f = load();
+  const html = renderI(f);
+  for (const t of ["Investimento do programa", "Resultado em 36 meses", "Investimento alocado", "Custo do squad", "Premissa de custo"]) {
+    assert.ok(html.includes(t), t);
+  }
+  assert.ok(html.includes(BRL(179000)));
+  assert.ok(html.includes("28,4 meses"));
+  assert.ok(html.includes("&gt; 36 meses")); // o3
+  for (const c of [6000, 42000, 125000, 173000]) assert.ok(html.includes(BRL(c)), String(c));
+  // appendix: every rate, the day rate and the model parameters
+  assert.ok(html.includes(`Tarifa semanal do perfil &quot;Engenheiro de IA&quot;`));
+  assert.ok(html.includes("informado pelo consultor"));
+  assert.ok(html.includes("Custo por dia de capacitação"));
+  assert.ok(html.includes("Semanas por mês: 52 ÷ 12"));
+  assert.ok(html.includes("pro rata"));
+  assert.ok(!html.includes("Rascunho — premissas não confirmadas"));
+  assert.ok(!/NaN|Infinity|undefined/.test(html));
+});
+
+test("without a rate for a visible role nothing is calculated, the report is a draft with the reason, and no NaN prints", () => {
+  const f = load();
+  f.engagement.squadRates = f.engagement.squadRates.filter((r) => r.role !== "Product owner");
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  const reason = "Tarifa do squad não informada para: Product owner — o investimento e o payback não foram calculados.";
+  assert.equal(m.draft, true);
+  assert.ok(m.draftReasons.includes(reason));
+  assert.equal(m.investment.total, null);
+  assert.equal(m.investment.paybackMonths, null);
+  assert.equal(m.investment.netOver36Months, null);
+  assert.equal(m.investment.note, "tarifa do squad não informada");
+  assert.deepEqual(m.squadByWave.map((w) => w.cost), [6000, 42000, null]);
+  assert.deepEqual(m.opportunities.map((o) => o.investment), [6000, 42000, null]);
+  const html = renderI(f);
+  assert.ok(html.includes("Rascunho — premissas não confirmadas"));
+  assert.ok(html.includes(escapeHtml(reason)));
+  assert.ok(html.includes("Não calculado"));
+  assert.ok(html.includes("Sem tarifa informada: Product owner"));
+  assert.ok(!/NaN|Infinity|undefined/.test(html));
+});
+
+test("an engagement with no rates at all renders without NaN and keeps the legacy totals", () => {
+  const f = load();
+  f.engagement.squadRates = [];
+  delete f.engagement.enablementDayRate;
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.investment.total, null);
+  assert.deepEqual(m.investment.missingRoles, ["Analista de dados", "Engenheiro de automação", "Engenheiro de IA", "Product owner"]);
+  assert.equal(m.totals.monthlySavings, 6293.33);
+  const html = renderI(f);
+  assert.ok(!/NaN|Infinity|undefined/.test(html));
+  assert.ok(!html.includes("Custo por dia de capacitação"));
+});
+
+test("no savings means payback and result are not shown but the investment is", () => {
+  const f = load();
+  f.opportunities.forEach((o) => { o.stepIds = []; });
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.totals.monthlySavings, 0);
+  assert.equal(m.investment.total, 179000);
+  assert.equal(m.investment.paybackMonths, null);
+  assert.equal(m.investment.note, "sem economia mensal calculada");
+  assert.equal(m.investment.netOver36Months, -179000 + 0);
+  assert.ok(!/NaN|Infinity|undefined/.test(renderI(f)));
+});
+
+test("a payback beyond 36 months shows as > 36 meses and rate text is escaped", () => {
+  const f = load();
+  f.engagement.squadRates[0]!.role = "<b>Analista de dados</b>";
+  f.opportunities[0]!.suggestedSquad.roles = ["<b>Analista de dados</b>"];
+  f.opportunities[1]!.suggestedSquad.roles = ["Engenheiro de automação", "<b>Analista de dados</b>"];
+  f.opportunities[2]!.suggestedSquad.weeks = 100;
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.investment.paybackOverCap, true);
+  const html = renderI(f);
+  assert.ok(html.includes("&gt; 36 meses"));
+  assert.ok(!html.includes("<b>Analista"));
+  assert.ok(html.includes("&lt;b&gt;Analista de dados&lt;/b&gt;"));
+});
+
+test("formatPayback", () => {
+  assert.equal(formatPayback(27.5, false), "27,5 meses");
+  assert.equal(formatPayback(80, true), "> 36 meses");
+  assert.equal(formatPayback(null, false), "—");
 });

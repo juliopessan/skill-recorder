@@ -9,6 +9,7 @@ import {
   OpportunitySchema,
   QuestionnaireAnswerSchema,
   RoleSchema,
+  SquadRateSchema,
   SourcedNumberSchema,
 } from "./diagnostic";
 
@@ -100,4 +101,32 @@ test("SourcedNumber and Role reject negative and non-finite numbers", () => {
   }
   assert.equal(SourcedNumberSchema.safeParse({ value: 0, source: "confirmed" }).success, true);
   assert.equal(RoleSchema.safeParse({ id: "r", name: "R", hourlyCost: 12.5 }).success, true);
+});
+
+const legacyEngagement = {
+  version: 1,
+  id: "e1",
+  clientName: "ACME",
+  createdAt: 1,
+  roles: [],
+  dataQuestionnaire: {},
+  processes: [],
+  thesisText: "",
+};
+
+test("an engagement saved before squad rates existed still parses, with no rates", () => {
+  const e = EngagementSchema.parse(legacyEngagement);
+  assert.deepEqual(e.squadRates, []);
+  assert.equal(e.enablementDayRate, undefined);
+});
+
+test("squad rates and the enablement day rate are validated", () => {
+  const ok = EngagementSchema.parse({ ...legacyEngagement, squadRates: [{ role: "Dev", weeklyRate: 4000 }], enablementDayRate: 1500 });
+  assert.equal(ok.squadRates[0]!.weeklyRate, 4000);
+  assert.equal(ok.enablementDayRate, 1500);
+  assert.equal(SquadRateSchema.safeParse({ role: "Dev", weeklyRate: 0 }).success, true);
+  for (const bad of [{ role: "", weeklyRate: 1 }, { role: "  ", weeklyRate: 1 }, { role: "Dev", weeklyRate: -1 }, { role: "Dev", weeklyRate: Infinity }]) {
+    assert.equal(SquadRateSchema.safeParse(bad).success, false);
+  }
+  assert.equal(EngagementSchema.safeParse({ ...legacyEngagement, enablementDayRate: -5 }).success, false);
 });

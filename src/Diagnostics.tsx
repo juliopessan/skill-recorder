@@ -193,6 +193,7 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
       createdAt: Date.now(),
       currency: "BRL",
       roles: [],
+      squadRates: [],
       dataQuestionnaire: {},
       processes: [],
       thesisText: DEFAULT_THESIS_TEXT,

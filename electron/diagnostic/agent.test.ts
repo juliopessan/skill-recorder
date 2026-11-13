@@ -47,7 +47,7 @@ async function withDirs(fn: () => Promise<void>) {
     steps: [{ id: "a", title: "a", detail: "d", apps: [], evidence: [], confidence: "medium" }],
   }));
   const e: Engagement = {
-    version: 1, id: "eng1", clientName: "A", createdAt: 1, currency: "BRL", roles: [],
+    version: 1, id: "eng1", clientName: "A", createdAt: 1, currency: "BRL", roles: [], squadRates: [],
     dataQuestionnaire: {}, processes: [{ id: "p1", name: "P1", sessionIds: ["s1"], stale: false }], thesisText: "",
   };
   saveEngagement(e);

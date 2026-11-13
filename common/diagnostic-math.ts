@@ -1,12 +1,15 @@
-import { DIAGNOSTIC_CONFIG, MATURITY_LEVELS } from "./diagnostic-config";
+import { DIAGNOSTIC_CONFIG, MATURITY_LEVELS, PAYBACK_DISPLAY_CAP_MONTHS, WEEKS_PER_MONTH } from "./diagnostic-config";
+import { roleKey, squadByWave } from "./diagnostic-roles";
 import type {
   DataQuestionnaire,
+  Enablement,
   Engagement,
   Opportunity,
   Process,
   ProcessMap,
   ProcessMapStep,
   Role,
+  SquadRate,
 } from "./diagnostic";
 
 const MS_PER_HOUR = 3_600_000;
@@ -141,4 +144,142 @@ export function aiMaturity(aiScore: number): AiMaturity {
 /** The dimension holding AI readiness back; ties go to "dados". */
 export function weakestDimension(processScoreValue: number, dataScoreValue: number): "processos" | "dados" {
   return processScoreValue < dataScoreValue ? "processos" : "dados";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Squad cost and return on investment. Rates come only from the consultant (Engagement.squadRates).
+// ---------------------------------------------------------------------------------------------
+
+const visibleInWave = (opps: Opportunity[], wave: 1 | 2 | 3): Opportunity[] =>
+  opps.filter((o) => !o.hidden && o.wave === wave);
+const safeWeeks = (o: Opportunity): number => (Number.isFinite(o.suggestedSquad.weeks) && o.suggestedSquad.weeks > 0 ? o.suggestedSquad.weeks : 0);
+
+/** First rate wins when the same role (case-insensitive, trimmed) was entered twice. */
+function rateByRole(rates: SquadRate[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rates) if (!m.has(roleKey(r.role))) m.set(roleKey(r.role), r.weeklyRate);
+  return m;
+}
+
+/** Distinct roles of the visible opportunities (any wave) that have no rate, in wave order, first spelling. */
+export function missingSquadRates(opps: Opportunity[], rates: SquadRate[]): string[] {
+  const have = rateByRole(rates);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of squadByWave(opps)) {
+    for (const role of w.roles) {
+      const k = roleKey(role);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (!have.has(k)) out.push(role);
+    }
+  }
+  return out;
+}
+
+export interface WaveInvestment {
+  wave: 1 | 2 | 3;
+  roles: string[];
+  /** Sum of the suggested weeks of the wave's visible opportunities (they run in sequence). */
+  weeks: number;
+  /** Σ over the wave's distinct roles of weeklyRate × weeks; null when any of those roles has no rate. */
+  cost: number | null;
+}
+
+/** A wave's squad is booked for the whole wave: every role of the wave is paid for all of its weeks. */
+export function waveInvestments(opps: Opportunity[], rates: SquadRate[]): WaveInvestment[] {
+  const have = rateByRole(rates);
+  return squadByWave(opps).map(({ wave, roles }) => {
+    const weeks = visibleInWave(opps, wave).reduce((a, o) => a + safeWeeks(o), 0);
+    const weekly = roles.map((r) => have.get(roleKey(r)));
+    const cost = weekly.some((w) => w === undefined) ? null : money((weekly as number[]).reduce((a, w) => a + w * weeks, 0));
+    return { wave, roles, weeks, cost };
+  });
+}
+
+/**
+ * Investment allocated to each visible opportunity: the wave cost split pro rata by weeks. The last
+ * opportunity of a wave takes the remainder so the cards add up to the wave cost to the cent.
+ * Null for every opportunity of a wave whose cost is null.
+ */
+export function opportunityInvestments(opps: Opportunity[], rates: SquadRate[]): Map<string, number | null> {
+  const out = new Map<string, number | null>();
+  for (const w of waveInvestments(opps, rates)) {
+    const items = visibleInWave(opps, w.wave);
+    if (w.cost === null) {
+      for (const o of items) out.set(o.id, null);
+      continue;
+    }
+    const lastIdx = items.reduce((idx, o, i) => (safeWeeks(o) > 0 ? i : idx), -1);
+    let allocated = 0;
+    items.forEach((o, i) => {
+      let share = 0;
+      if (w.weeks > 0 && safeWeeks(o) > 0) {
+        share = i === lastIdx ? money(w.cost! - allocated) : money((w.cost! * safeWeeks(o)) / w.weeks);
+      }
+      allocated = money(allocated + share);
+      out.set(o.id, share);
+    });
+  }
+  return out;
+}
+
+export interface ProgramInvestment {
+  waves: WaveInvestment[];
+  missingRoles: string[];
+  /** Σ wave costs; null as soon as one role lacks a rate (a partial cost would understate it). */
+  squadCost: number | null;
+  /** Σ visible durationDays × day rate; 0 when no day rate is set. */
+  enablementCost: number;
+  total: number | null;
+}
+
+export function programInvestment(
+  opps: Opportunity[],
+  rates: SquadRate[],
+  enablement: Enablement[] = [],
+  enablementDayRate?: number,
+): ProgramInvestment {
+  const waves = waveInvestments(opps, rates);
+  const missingRoles = missingSquadRates(opps, rates);
+  const squadCost = waves.some((w) => w.cost === null) ? null : money(waves.reduce((a, w) => a + (w.cost ?? 0), 0));
+  const enablementCost =
+    enablementDayRate !== undefined && Number.isFinite(enablementDayRate)
+      ? money(enablement.filter((x) => !x.hidden).reduce((a, x) => a + x.durationDays * enablementDayRate, 0))
+      : 0;
+  return { waves, missingRoles, squadCost, enablementCost, total: squadCost === null ? null : money(squadCost + enablementCost) };
+}
+
+/** Simple payback in months (investment ÷ monthly savings); null without an investment or without savings. */
+export function paybackMonths(investment: number | null, monthlySavings: number): number | null {
+  if (investment === null || !Number.isFinite(investment) || !(monthlySavings > 0)) return null;
+  return investment / monthlySavings;
+}
+
+export interface ProgramReturn {
+  /** Months until every wave is delivered: total squad weeks ÷ (52 / 12). */
+  deliveryMonths: number;
+  /** Unrounded; null when the investment is unknown or savings are zero. */
+  paybackMonths: number | null;
+  /** True when payback is beyond the display cap (36 months). */
+  paybackOverCap: boolean;
+  /** max(0, 36 − deliveryMonths) × monthlySavings − investment; null when the investment is unknown. */
+  netOver36Months: number | null;
+}
+
+/** Savings start after delivery; `monthlySavings` must come from `aggregateSavings` (never the naive sum). */
+export function programReturn(investment: number | null, monthlySavings: number, totalWeeks: number): ProgramReturn {
+  const weeks = Number.isFinite(totalWeeks) && totalWeeks > 0 ? totalWeeks : 0;
+  const deliveryMonths = weeks / WEEKS_PER_MONTH;
+  const payback = paybackMonths(investment, monthlySavings);
+  const savings = Number.isFinite(monthlySavings) && monthlySavings > 0 ? monthlySavings : 0;
+  return {
+    deliveryMonths,
+    paybackMonths: payback,
+    paybackOverCap: payback !== null && payback > PAYBACK_DISPLAY_CAP_MONTHS,
+    netOver36Months:
+      investment === null || !Number.isFinite(investment)
+        ? null
+        : money(Math.max(0, PAYBACK_DISPLAY_CAP_MONTHS - deliveryMonths) * savings - investment),
+  };
 }

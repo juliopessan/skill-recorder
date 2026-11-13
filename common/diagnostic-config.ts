@@ -26,6 +26,12 @@ export const DEFAULT_THESIS_TEXT =
 /** Maximum people in a squad: per opportunity and per wave (distinct roles). */
 export const MAX_SQUAD_SIZE = 5;
 
+/** Weeks in a month (52 / 12): converts squad weeks into delivery months. */
+export const WEEKS_PER_MONTH = 52 / 12;
+
+/** Horizon of the return calculation, and the payback shown as "> 36 meses" beyond it. */
+export const PAYBACK_DISPLAY_CAP_MONTHS = 36;
+
 /** AI maturity levels; `min` is the inclusive lower bound of the AI readiness score. */
 export const MATURITY_LEVELS = [
   { level: 1, name: "Inicial", min: 0 },
