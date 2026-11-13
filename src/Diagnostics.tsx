@@ -18,6 +18,7 @@ import { OpportunityList } from "./diagnostics/OpportunityList";
 import { ProcessesSection } from "./diagnostics/ProcessPanel";
 import { QuestionnaireForm } from "./diagnostics/QuestionnaireForm";
 import { ReportPanel } from "./diagnostics/ReportPanel";
+import { SquadRates } from "./diagnostics/SquadRates";
 import { isError, safeCall, type GenerationState } from "./diagnostics/shared";
 
 const STEP_LABEL: Record<DiagnosticStep, string> = {
@@ -353,6 +354,13 @@ export function Diagnostics({ renderSwitcher }: { renderSwitcher: (busy: boolean
               onSave={(u) => void saveOpportunities(u)}
               onGenerate={(fb) => void generateOpportunities(fb)}
               onCancel={cancel}
+            />
+            <SquadRates
+              engagement={e}
+              opportunities={bundle.opportunities}
+              report={bundle.report}
+              disabled={busy}
+              onChange={(u) => void persist(u)}
             />
             <InitiativesPanel
               initiatives={bundle.initiatives}

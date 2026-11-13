@@ -22,6 +22,10 @@ export async function safeCall<T>(call: () => Promise<T | { error: string }>): P
 export const NUMBER_ERROR = "Informe um número maior ou igual a zero.";
 export const validateNonNegative = (text: string): string | null => (parseNonNegative(text) === null ? NUMBER_ERROR : null);
 
+/** Like validateNonNegative, but a blank field is valid (it means "not informed"). */
+export const validateOptionalNonNegative = (text: string): string | null =>
+  text.trim() === "" ? null : validateNonNegative(text);
+
 export interface GenerationState {
   /** What is running, or null when idle. */
   running: { kind: "map"; processId: string } | { kind: "opportunities" } | null;

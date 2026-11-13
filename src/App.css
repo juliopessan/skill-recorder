@@ -3812,6 +3812,26 @@ select.fb-input {
   gap: 10px;
 }
 
+.diag-row-end {
+  align-items: flex-end;
+}
+
+.diag-field.wide {
+  width: 280px;
+  flex: none;
+}
+
+.diag-unit-end {
+  padding-bottom: 12px;
+}
+
+.diag-rate-role {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .diag-unit {
   font-family: var(--mono);
   font-size: 11px;

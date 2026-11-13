@@ -7,7 +7,10 @@ import type {
   ProcessMap,
   QuestionnaireAxis,
   SourcedNumber,
+  SquadRate,
 } from "../common/diagnostic";
+import { roleKey, squadByWave } from "../common/diagnostic-roles";
+import type { ReportInvestment } from "../common/diagnostic-report";
 
 export const AXES: readonly QuestionnaireAxis[] = ["inventory", "structure", "quality", "access", "governance"];
 
@@ -104,6 +107,62 @@ export function parseNonNegative(text: string): number | null {
   if (trimmed === "") return null;
   const n = Number(trimmed.replace(",", "."));
   return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export interface SquadRateRow {
+  role: string;
+  /** null = not informed. */
+  weeklyRate: number | null;
+  /** False for a saved rate whose role no visible opportunity uses any more. */
+  inUse: boolean;
+}
+
+/**
+ * Every distinct squad role of the visible opportunities (wave order, first spelling), each with its
+ * saved rate if any, followed by saved rates for roles no longer in use so they stay editable.
+ */
+export function squadRateRows(opps: Opportunity[], rates: SquadRate[]): SquadRateRow[] {
+  const saved = new Map<string, SquadRate>();
+  for (const r of rates) if (!saved.has(roleKey(r.role))) saved.set(roleKey(r.role), r);
+  const seen = new Set<string>();
+  const rows: SquadRateRow[] = [];
+  for (const w of squadByWave(opps)) {
+    for (const role of w.roles) {
+      const k = roleKey(role);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rows.push({ role, weeklyRate: saved.get(k)?.weeklyRate ?? null, inUse: true });
+    }
+  }
+  for (const r of saved.values()) {
+    if (!seen.has(roleKey(r.role))) rows.push({ role: r.role.trim(), weeklyRate: r.weeklyRate, inUse: false });
+  }
+  return rows;
+}
+
+/** Sets (or, with null, clears) the weekly rate of a role, matching case-insensitively. Pure; used inside persist updaters. */
+export function setSquadRate(rates: SquadRate[], role: string, weeklyRate: number | null): SquadRate[] {
+  const k = roleKey(role);
+  const matches = (r: SquadRate): boolean => roleKey(r.role) === k;
+  if (weeklyRate === null) return rates.filter((r) => !matches(r));
+  if (!rates.some(matches)) return [...rates, { role: role.trim(), weeklyRate }];
+  let done = false;
+  return rates.flatMap((r) => {
+    if (!matches(r)) return [r];
+    if (done) return []; // collapse duplicates of the same role
+    done = true;
+    return [{ role: r.role, weeklyRate }];
+  });
+}
+
+export const PAYBACK_WARNING = "Payback acima de 36 meses: revise escopo, volume ou preço antes de apresentar.";
+export const NEGATIVE_RESULT_WARNING = "Resultado em 36 meses negativo: revise escopo, volume ou preço antes de apresentar.";
+
+/** Consultant-only warning (never in the client report); null when there is nothing to warn about. */
+export function squadReturnWarning(inv: Pick<ReportInvestment, "paybackOverCap" | "netOver36Months">): string | null {
+  if (inv.paybackOverCap) return PAYBACK_WARNING;
+  if (inv.netOver36Months !== null && inv.netOver36Months < 0) return NEGATIVE_RESULT_WARNING;
+  return null;
 }
 
 export const SAVE_FAILED_MESSAGE = "Não foi possível salvar as alterações. Tente novamente.";

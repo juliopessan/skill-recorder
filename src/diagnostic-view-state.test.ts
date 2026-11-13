@@ -10,8 +10,13 @@ import {
   moveOpportunity,
   nextStep,
   parseNonNegative,
+  NEGATIVE_RESULT_WARNING,
+  PAYBACK_WARNING,
   SAVE_FAILED_MESSAGE,
   setOpportunityHidden,
+  setSquadRate,
+  squadRateRows,
+  squadReturnWarning,
 } from "./diagnostic-view-state";
 
 const proc = (over: Partial<Process> = {}): Process => ({
@@ -32,6 +37,7 @@ const eng = (over: Partial<Engagement> = {}): Engagement => ({
   processes: [proc()],
   thesisText: "",
   ...over,
+  squadRates: over.squadRates ?? [],
 });
 const map = (processId = "p1"): ProcessMap => ({
   version: 1,
@@ -240,4 +246,45 @@ test("move and hide also work for enablement and expansion items", () => {
   ];
   assert.deepEqual(moveOpportunity(items, "c2", -1).map((x) => [x.id, x.order, x.title]), [["c2", 0, "B"], ["c1", 1, "A"]]);
   assert.equal(setOpportunityHidden(items, "c1", true)[0]!.hidden, true);
+});
+
+const sqOpp = (id: string, wave: 1 | 2 | 3, roles: string[], hidden = false): Opportunity => ({
+  id, title: id, processId: "p1", stepIds: [], wave, prerequisites: [],
+  estimatedSavingsPct: { value: 0.1, source: "ai-suggested" }, effort: "S", risk: "low", rationale: "",
+  suggestedSquad: { roles, weeks: 2 }, hidden, order: 0,
+});
+
+test("squadRateRows lists each distinct visible role once, then saved rates no longer in use", () => {
+  const opps = [
+    sqOpp("a", 1, ["Dev", "QA "]),
+    sqOpp("b", 2, ["dev", "PO"]),
+    sqOpp("h", 1, ["Oculto"], true),
+  ];
+  const rows = squadRateRows(opps, [{ role: "qa", weeklyRate: 900 }, { role: "Antigo", weeklyRate: 50 }, { role: "Oculto", weeklyRate: 7 }]);
+  assert.deepEqual(rows, [
+    { role: "Dev", weeklyRate: null, inUse: true },
+    { role: "QA", weeklyRate: 900, inUse: true },
+    { role: "PO", weeklyRate: null, inUse: true },
+    { role: "Antigo", weeklyRate: 50, inUse: false },
+    { role: "Oculto", weeklyRate: 7, inUse: false },
+  ]);
+  assert.deepEqual(squadRateRows([], []), []);
+});
+
+test("setSquadRate adds, replaces case-insensitively, accepts zero and clears on null", () => {
+  const base = [{ role: "Dev", weeklyRate: 100 }];
+  assert.deepEqual(setSquadRate(base, "QA", 50), [{ role: "Dev", weeklyRate: 100 }, { role: "QA", weeklyRate: 50 }]);
+  assert.deepEqual(setSquadRate(base, " dev ", 200), [{ role: "Dev", weeklyRate: 200 }]);
+  assert.deepEqual(setSquadRate(base, "Dev", 0), [{ role: "Dev", weeklyRate: 0 }]);
+  assert.deepEqual(setSquadRate(base, "DEV", null), []);
+  assert.deepEqual(setSquadRate([{ role: "Dev", weeklyRate: 1 }, { role: "dev", weeklyRate: 2 }], "Dev", 3), [{ role: "Dev", weeklyRate: 3 }]);
+  assert.equal(base[0]!.weeklyRate, 100); // pure
+});
+
+test("squadReturnWarning only fires on payback above 36 months or a negative result", () => {
+  assert.equal(squadReturnWarning({ paybackOverCap: true, netOver36Months: -10 }), PAYBACK_WARNING);
+  assert.equal(PAYBACK_WARNING, "Payback acima de 36 meses: revise escopo, volume ou preço antes de apresentar.");
+  assert.equal(squadReturnWarning({ paybackOverCap: false, netOver36Months: -1 }), NEGATIVE_RESULT_WARNING);
+  assert.equal(squadReturnWarning({ paybackOverCap: false, netOver36Months: 0 }), null);
+  assert.equal(squadReturnWarning({ paybackOverCap: false, netOver36Months: null }), null);
 });
