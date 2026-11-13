@@ -248,3 +248,22 @@ Added after user review (2026-11-12): report in the Avanade visual identity; squ
 - [ ] **Step 3: Implement** the above.
 - [ ] **Step 4: Run** tests → PASS; `npm test`, `npm run typecheck`, `npm run build`; re-render the report sample (html/pdf/png) and UI screenshots; inspect them.
 - [ ] **Step 5: Commit** `feat(diagnostic): Avanade report design, squad cap, AI maturity, enablement and expansion`
+
+### Task 11: Squad cost and return on investment
+
+Added after the end-to-end LinkedIn test (2026-11-13): the report showed savings but not what the squad costs, so a client could not see payback. Findings from that test: savings R$ 959/month against a 20-week squad.
+
+**Rulings (deterministic first, nothing new goes to the LLM):**
+- Rates are the consultancy's commercial data: entered by the consultant per squad role (`Engagement.squadRates`), never invented by the app or the model. Role names match case-insensitively and trimmed (same `roleKey` as `squadByWave`).
+- A wave's squad is booked for the whole wave: wave cost = Σ over the wave's distinct roles of `weeklyRate × wave weeks`, where wave weeks = Σ `suggestedSquad.weeks` of the wave's visible opportunities (opportunities in a wave are delivered in sequence by the same squad). Conservative on purpose.
+- Per-opportunity investment = wave cost × (opportunity weeks ÷ wave weeks) — pro rata, so the cards sum to the wave cost.
+- Program investment = Σ wave costs (+ enablement cost when `enablementDayRate` is set: Σ visible `durationDays` × rate).
+- Return uses `aggregateSavings` (max per step, wave caps, visible only) — never the naive sum. Savings start after delivery; payback is simple (investment ÷ monthly savings); `deliveryMonths = totalWeeks ÷ (52/12)`; `netOver36Months = max(0, 36 − deliveryMonths) × monthlySavings − investment`.
+- Any visible opportunity role without a rate → investment, payback and net are `null` (never partial: a partial cost understates), and the report is a **draft** with the reason `Tarifa do squad não informada para: <perfis> — o investimento e o payback não foram calculados.`
+- The client report shows the numbers plainly (payback above 36 months is shown as `> 36 meses`); no editorial text. The consultant UI shows a warning when payback > 36 months or net < 0 (`Payback acima de 36 meses: revise escopo, volume ou preço antes de apresentar.`).
+- The agent context gets `squadRoleCatalog: string[]` (role NAMES that have a rate, no values) and the instructions say to reuse those names exactly.
+
+**Files:** `common/diagnostic.ts` (`SquadRateSchema {role: string.min(1), weeklyRate: number finite ≥ 0}`; `Engagement.squadRates` default `[]` so old files still load; `Engagement.enablementDayRate` optional finite ≥ 0), `common/diagnostic-config.ts` (`WEEKS_PER_MONTH = 52/12`, `PAYBACK_DISPLAY_CAP_MONTHS = 36`), `common/diagnostic-math.ts` (`missingSquadRates`, `waveInvestment`, `opportunityInvestment`, `programInvestment`, `paybackMonths`, `programReturn` — signatures at the implementer's discretion, pure, null-safe), `common/diagnostic-rules.ts` (draft reason), `common/diagnostic-report.ts` + `-style.ts` (summary tiles Investimento/Payback/Resultado em 36 meses; card facts Investimento alocado + Payback; squad section cost column per wave and total; appendix rows for each rate as `informado pelo consultor` and for the model parameters), `electron/diagnostic/tools.ts` + `instructions.ts` (catalog + instruction), `src/diagnostics/*` (rates table listing every distinct squad role of the current opportunities plus already-saved rates, enablement day rate input, consultant warning), fixture `common/__fixtures__/diagnostic-engagement.json` (add rates; existing cost/savings totals 15900 / 6293.33 must not change).
+
+- [ ] Step 1: tests first — hand-computed math (wave of 3 roles at R$ 4.000/semana over 5 weeks = R$ 60.000; pro rata split by weeks; payback = investment ÷ savings; null when a rate is missing or savings are 0), draft reason, report with and without rates (no NaN/undefined/Infinity), old engagement JSON without `squadRates` still parses, agent context lists role names but no rate numbers, UI helper tests.
+- [ ] Step 2: implement; Step 3: `npm test`, `npm run typecheck`, `npm run typecheck:evals`, `npm run build`; Step 4: re-render the sample report and the UI screenshots and look at them; Step 5: commit.
