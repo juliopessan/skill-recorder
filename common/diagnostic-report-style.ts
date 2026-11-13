@@ -32,6 +32,10 @@ p { margin:6px 0; }
 section { padding-top:22px; }
 section.pb { page-break-before:always; break-before:page; padding-top:0; }
 h2, h3, h4 { page-break-after:avoid; break-after:avoid; }
+/* Short blocks stay whole so a heading, a small table or a short paragraph is never split from its section. */
+section.keep, #dados table, #squad table { page-break-inside:avoid; break-inside:avoid; }
+#premissas li { page-break-inside:avoid; break-inside:avoid; }
+p { orphans:3; widows:3; }
 .lead { page-break-inside:avoid; break-inside:avoid; page-break-after:avoid; break-after:avoid; font-size:11pt; color:var(--muted); margin-bottom:14px; }
 
 /* Cover */
@@ -79,7 +83,7 @@ td.r, th.r { text-align:right; }
 .chart.narrow { max-width:128mm; margin-left:auto; margin-right:auto; }
 .process { page-break-inside:auto; margin-bottom:22px; }
 .process h3 { break-after:avoid; page-break-after:avoid; }
-.meta { display:flex; flex-wrap:wrap; gap:4px 18px; font-size:9pt; color:var(--muted); margin-bottom:4px; }
+.meta { page-break-after:avoid; break-after:avoid; display:flex; flex-wrap:wrap; gap:4px 18px; font-size:9pt; color:var(--muted); margin-bottom:4px; }
 .badge { display:inline-block; font-size:7.5pt; font-weight:600; letter-spacing:.1em; text-transform:uppercase; padding:1px 7px; border-radius:2px; border:1px solid var(--orange-dark); color:var(--orange-dark); margin-right:4px; vertical-align:middle; }
 .badge-quick { background:${COLORS.structuredText}; border-color:${COLORS.structuredText}; color:#fff; }
 .badge-wave { background:var(--orange-dark); color:#fff; }
@@ -99,6 +103,12 @@ td.r, th.r { text-align:right; }
 .wave h3 { margin-top:6px; }
 ol.recs { margin:6px 0 0 18px; padding:0; }
 .prov { display:block; font-size:8pt; color:var(--muted); font-style:italic; }
-#premissas td, #premissas th { padding:3px 8px; font-size:9pt; }
+#premissas td, #premissas th { padding:1.5px 8px; font-size:8.5pt; line-height:1.35; }
+#premissas ul { font-size:8.2pt; line-height:1.3; margin:4px 0 0; padding-left:16px; }
+#premissas h3 { margin-top:8px; }
+#premissas .lead { font-size:10pt; margin-bottom:6px; }
+#premissas table { margin:4px 0; }
+#premissas footer { margin-top:6px; padding-top:4px; page-break-inside:avoid; }
+#premissas td:last-child, #premissas th:last-child { white-space:nowrap; }
 footer { margin-top:24px; font-size:8pt; color:var(--muted); border-top:1px solid var(--line); padding-top:8px; }
 `;

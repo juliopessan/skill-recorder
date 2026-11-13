@@ -501,7 +501,7 @@ ${body}<p class="small muted">Sem estimativa financeira: as frentes precisam ser
 
 function renderThesis({ m }: Ctx): string {
   return `
-<section id="antes-da-ia">
+<section id="antes-da-ia" class="keep">
   <h2>Antes da IA</h2>
   <p class="thesis">${esc(m.thesis)}</p>
   <p>Os indicadores deste relatório respondem às duas perguntas da tese: os processos estão mapeados e padronizados (${m.scores.process}/100) e os dados estão estruturados (${m.scores.data}/100)? A prontidão para IA (${m.scores.ai}/100) é limitada pelo mais fraco dos dois.</p>
@@ -528,7 +528,7 @@ function renderProcess({ cur }: Ctx, p: ReportProcess): string {
 
 function renderProcessMaps(ctx: Ctx): string {
   const body = ctx.m.processes.map((p) => renderProcess(ctx, p)).join("") || `<p class="muted">Nenhum processo cadastrado.</p>`;
-  return `<section id="mapa" class="pb"><h2>Mapa por processo</h2><p class="lead">Passos observados nas gravações, com tempo mediano medido, aplicativos e estrutura dos dados.</p>${body}</section>`;
+  return `<section id="mapa"><h2>Mapa por processo</h2><p class="lead">Passos observados nas gravações, com tempo mediano medido, aplicativos e estrutura dos dados.</p>${body}</section>`;
 }
 
 function renderData({ m, e }: Ctx): string {
@@ -541,7 +541,7 @@ function renderData({ m, e }: Ctx): string {
     return `<tr><td><strong>${AXIS_LABELS[a]}</strong></td><td>${q.answer} de 4</td><td>${SOURCE_LABEL[q.source]}</td><td>${evidence}</td></tr>`;
   }).join("");
   const w = DIAGNOSTIC_CONFIG.dataWeights;
-  return `<section id="dados" class="pb"><h2>Diagnóstico de dados</h2>
+  return `<section id="dados"><h2>Diagnóstico de dados</h2>
 <p class="lead">Score de dados: <strong>${m.scores.data}/100</strong>, combinando o questionário (${pct(w.questionnaire)}) e a proporção observada de passos com dados estruturados (${pct(m.observedStructuredRatio)}, ${pct(w.observed)}).</p>
 <div class="card">${radarSvg(answers).replace('class="chart"', 'class="chart narrow"')}</div>
 <table><thead><tr><th>Eixo</th><th>Resposta</th><th>Fonte</th><th>Evidências</th></tr></thead><tbody>${rows}</tbody></table></section>`;
@@ -618,7 +618,7 @@ function renderSquad({ m, cur }: Ctx): string {
   const kpis = m.kpis
     .map((k) => `<tr><td>${esc(k.label)}</td><td class="r">${esc(k.baseline)}</td><td>${k.direction}</td></tr>`)
     .join("");
-  return `<section id="squad" class="pb"><h2>Proposta de squad</h2><p class="lead">Squads enxutos, de até ${MAX_SQUAD_SIZE} pessoas por onda. Perfis sugeridos pelas oportunidades e indicadores para medir o resultado contra a linha de base deste diagnóstico.</p>
+  return `<section id="squad"><h2>Proposta de squad</h2><p class="lead">Squads enxutos, de até ${MAX_SQUAD_SIZE} pessoas por onda. Perfis sugeridos pelas oportunidades e indicadores para medir o resultado contra a linha de base deste diagnóstico.</p>
 <h3>Perfis</h3>${roles}
 <h3>Squad e duração por onda</h3><table><thead><tr><th>Onda</th><th>Perfis</th><th class="r">Squad</th><th class="r">Duração</th><th class="r">Custo do squad</th></tr></thead><tbody>${weeks}<tr><td colspan="3"><strong>Total</strong></td><td class="r nowrap"><strong>${m.squad.totalWeeks} semanas</strong></td><td class="r nowrap"><strong>${costCell(inv.squadCost)}</strong></td></tr>${extra}</tbody></table>
 <p class="small muted">Premissa: squads de no máximo ${MAX_SQUAD_SIZE} pessoas; as oportunidades de uma mesma onda são entregues em sequência pelo mesmo squad.</p>
