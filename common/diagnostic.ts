@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import { Confidence } from "./analysis";
-import { MAX_SQUAD_SIZE } from "./diagnostic-config";
+import { MAX_RATE, MAX_SQUAD_SIZE } from "./diagnostic-config";
+import { dedupeSquadRates } from "./diagnostic-roles";
 
 /** Where a number or answer came from. Only "measured" and "confirmed" are trusted for reports. */
 export const Source = z.enum(["measured", "ai-suggested", "confirmed"]);
@@ -148,7 +149,7 @@ export type OpportunitiesSubmission = z.infer<typeof OpportunitiesSubmissionSche
 /** What one squad role costs per week. Entered by the consultant, never invented by the app or the model. */
 export const SquadRateSchema = z.object({
   role: z.string().refine((s) => s.trim().length > 0, { message: "role must not be blank" }),
-  weeklyRate: z.number().finite().nonnegative(),
+  weeklyRate: z.number().finite().nonnegative().max(MAX_RATE),
 });
 export type SquadRate = z.infer<typeof SquadRateSchema>;
 
@@ -163,8 +164,8 @@ export const EngagementSchema = z.object({
   processes: z.array(ProcessSchema),
   thesisText: z.string(),
   /** Weekly rate per squad role (matched case-insensitively, trimmed). Old files load as []. */
-  squadRates: z.array(SquadRateSchema).default([]),
+  squadRates: z.array(SquadRateSchema).default([]).transform(dedupeSquadRates),
   /** Optional price of one enablement day; when set, enablement enters the program investment. */
-  enablementDayRate: z.number().finite().nonnegative().optional(),
+  enablementDayRate: z.number().finite().nonnegative().max(MAX_RATE).optional(),
 });
 export type Engagement = z.infer<typeof EngagementSchema>;

@@ -26,6 +26,9 @@ export const DEFAULT_THESIS_TEXT =
 /** Maximum people in a squad: per opportunity and per wave (distinct roles). */
 export const MAX_SQUAD_SIZE = 5;
 
+/** Upper bound for a weekly squad rate and for the enablement day rate (guards against overflow). */
+export const MAX_RATE = 1_000_000;
+
 /** Weeks in a month (52 / 12): converts squad weeks into delivery months. */
 export const WEEKS_PER_MONTH = 52 / 12;
 

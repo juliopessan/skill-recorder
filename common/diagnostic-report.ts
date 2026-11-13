@@ -15,6 +15,7 @@ import {
   aiMaturity,
   aiReadinessScore,
   dataScore,
+  money,
   observedStructuredRatio,
   opportunityReadiness,
   opportunityInvestments,
@@ -29,7 +30,7 @@ import {
   type AiMaturity,
 } from "./diagnostic-math";
 import { draftReasons, isQuickWin, prerequisitePath } from "./diagnostic-rules";
-import { roleKey } from "./diagnostic-roles";
+import { dedupeSquadRates, roleKey } from "./diagnostic-roles";
 import { REPORT_CSS } from "./diagnostic-report-style";
 import {
   AXIS_LABELS,
@@ -149,7 +150,6 @@ export interface DiagnosticReport {
   assumptions: { label: string; value: string; source: Source | "consultant" }[];
 }
 
-const money2 = (n: number): number => Math.round(n * 100) / 100;
 const pct = (r: number): string => `${Math.round((Number.isFinite(r) ? r : 0) * 100)}%`;
 const SOURCE_LABEL: Record<Source | "consultant", string> = {
   measured: "medido",
@@ -217,7 +217,7 @@ function buildAssumptions(e: Engagement, processes: ReportProcess[], items: Repo
       source: o.estimatedSavingsPct.source,
     });
   }
-  for (const r of e.squadRates) {
+  for (const r of dedupeSquadRates(e.squadRates)) {
     out.push({ label: `Tarifa semanal do perfil "${r.role}"`, value: `${formatCurrency(r.weeklyRate, e.currency)}/semana`, source: "consultant" });
   }
   if (e.enablementDayRate !== undefined) {
@@ -275,7 +275,7 @@ export function buildReportModel(
       processName: p?.name ?? o.processId,
       ...sav,
       investment,
-      paybackMonths: payback === null ? null : money2(payback),
+      paybackMonths: payback === null ? null : money(payback),
       paybackOverCap: payback !== null && payback > PAYBACK_DISPLAY_CAP_MONTHS,
       readiness: opportunityReadiness(o, scoreP, scoreD),
       // Hidden prerequisites still block the quick win, but are never listed.
@@ -284,7 +284,7 @@ export function buildReportModel(
     };
   });
 
-  const monthlyCost = money2(processes.reduce((a, p) => a + p.monthlyCost, 0));
+  const monthlyCost = money(processes.reduce((a, p) => a + p.monthlyCost, 0));
   const reasons = draftReasons(e, maps, opps);
   const roadmap = ([1, 2, 3] as const).map((wave) => ({ wave, items: items.filter((o) => o.wave === wave) }));
 
@@ -308,22 +308,22 @@ export function buildReportModel(
   const monthlySavings = aggregateSavings(visible, maps, e);
   const ret = programReturn(plan.total, monthlySavings, plan.waves.reduce((a, w) => a + w.weeks, 0));
   const investment: ReportInvestment = {
-    squadRates: e.squadRates.map((r) => ({ ...r })),
+    squadRates: dedupeSquadRates(e.squadRates).map((r) => ({ ...r })),
     enablementDayRate: e.enablementDayRate,
     squadCost: plan.squadCost,
     enablementCost: plan.enablementCost,
     enablementDays: enablement.reduce((a, x) => a + x.durationDays, 0),
     total: plan.total,
     missingRoles: plan.missingRoles,
-    paybackMonths: ret.paybackMonths === null ? null : money2(ret.paybackMonths),
+    paybackMonths: ret.paybackMonths === null ? null : money(ret.paybackMonths),
     paybackOverCap: ret.paybackOverCap,
     note:
       plan.total === null
-        ? "tarifa do squad não informada"
+        ? plan.missingRoles.length > 0 ? "tarifa do squad não informada" : "valor de tarifa fora do limite"
         : ret.paybackMonths === null
           ? "sem economia mensal calculada"
           : null,
-    deliveryMonths: money2(ret.deliveryMonths),
+    deliveryMonths: money(ret.deliveryMonths),
     netOver36Months: ret.netOver36Months,
   };
 
@@ -429,7 +429,9 @@ function investmentTiles({ m, cur }: Ctx): string {
   const netSub =
     inv.netOver36Months === null
       ? why(`Não calculado: ${inv.note ?? "tarifa do squad não informada"}`)
-      : why(`Economia a partir da entrega (${monthsFmt.format(inv.deliveryMonths)} meses)`);
+      : m.totals.monthlySavings > 0
+        ? why(`Economia a partir da entrega (${monthsFmt.format(inv.deliveryMonths)} meses)`)
+        : why("Sem economia mensal calculada");
   return `<div class="kpi k3">
     <div class="card"><div class="tag">Investimento do programa</div><div class="num">${inv.total === null ? "Não calculado" : esc(cur(inv.total))}</div>${invSub}</div>
     <div class="card"><div class="tag">Payback</div><div class="num">${esc(paybackText)}</div>${paybackSub}</div>

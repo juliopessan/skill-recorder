@@ -1,7 +1,7 @@
 import type { Engagement, Opportunity } from "../../common/diagnostic";
 import { formatCurrency, formatPayback, type DiagnosticReport } from "../../common/diagnostic-report";
 import { parseNonNegative, setSquadRate, squadRateRows, squadReturnWarning } from "../diagnostic-view-state";
-import { CommitInput, Section, validateOptionalNonNegative } from "./shared";
+import { CommitInput, Section, validateOptionalRate } from "./shared";
 
 /**
  * Weekly rate per squad role (consultant-entered; blank = not informed) and the optional enablement
@@ -53,7 +53,7 @@ export function SquadRates({
                 placeholder="a informar"
                 value={r.weeklyRate ?? ""}
                 disabled={disabled}
-                validate={validateOptionalNonNegative}
+                validate={validateOptionalRate}
                 onCommit={(v) => setRate(r.role, v)}
               />
               <span className="diag-unit">{cur}/semana</span>
@@ -72,7 +72,7 @@ export function SquadRates({
           placeholder="a informar"
           value={engagement.enablementDayRate ?? ""}
           disabled={disabled}
-          validate={validateOptionalNonNegative}
+          validate={validateOptionalRate}
           onCommit={(v) => onChange((e) => ({ ...e, enablementDayRate: parseNonNegative(v) ?? undefined }))}
         />
         <span className="diag-unit diag-unit-end">{cur}/dia · se informado, entra no investimento</span>

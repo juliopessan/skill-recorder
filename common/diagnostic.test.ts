@@ -130,3 +130,16 @@ test("squad rates and the enablement day rate are validated", () => {
   }
   assert.equal(EngagementSchema.safeParse({ ...legacyEngagement, enablementDayRate: -5 }).success, false);
 });
+
+test("rates are bounded and duplicate roles collapse to the first entry on parse", () => {
+  assert.equal(SquadRateSchema.safeParse({ role: "Dev", weeklyRate: 1_000_000 }).success, true);
+  assert.equal(SquadRateSchema.safeParse({ role: "Dev", weeklyRate: 1_000_001 }).success, false);
+  assert.equal(SquadRateSchema.safeParse({ role: "Dev", weeklyRate: 1e308 }).success, false);
+  assert.equal(EngagementSchema.safeParse({ ...legacyEngagement, enablementDayRate: 1_000_000 }).success, true);
+  assert.equal(EngagementSchema.safeParse({ ...legacyEngagement, enablementDayRate: 1_000_001 }).success, false);
+  const e = EngagementSchema.parse({
+    ...legacyEngagement,
+    squadRates: [{ role: "Dev", weeklyRate: 100 }, { role: " dev ", weeklyRate: 999 }, { role: "QA", weeklyRate: 50 }],
+  });
+  assert.deepEqual(e.squadRates, [{ role: "Dev", weeklyRate: 100 }, { role: "QA", weeklyRate: 50 }]);
+});

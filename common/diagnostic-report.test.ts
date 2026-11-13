@@ -421,3 +421,51 @@ test("formatPayback", () => {
   assert.equal(formatPayback(80, true), "> 36 meses");
   assert.equal(formatPayback(null, false), "—");
 });
+
+test("an extreme rate that bypassed the schema never prints Infinity or NaN", () => {
+  const f = load();
+  f.engagement.squadRates[0]!.weeklyRate = 1e308;
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.investment.total, null);
+  assert.equal(m.investment.note, "valor de tarifa fora do limite");
+  assert.ok(!/NaN|Infinity|undefined/.test(renderI(f)));
+});
+
+test("a shadowed duplicate rate is not listed in the appendix; the first entry applies", () => {
+  const f = load();
+  f.engagement.squadRates.push({ role: " product OWNER", weeklyRate: 123456 });
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.investment.total, 179000); // same as without the duplicate
+  const rows = m.assumptions.filter((a) => a.label.startsWith("Tarifa semanal"));
+  assert.equal(rows.length, 4);
+  assert.ok(!renderI(f).includes(escapeHtml(formatCurrency(123456, "BRL"))));
+});
+
+test("with no savings the result tile does not claim savings start at delivery", () => {
+  const f = load();
+  f.opportunities.forEach((o) => { o.stepIds = []; });
+  const html = renderI(f);
+  assert.ok(html.includes("Sem economia mensal calculada"));
+  assert.ok(!html.includes("Economia a partir da entrega"));
+  assert.ok(renderI(load()).includes("Economia a partir da entrega"));
+});
+
+test("no visible opportunity: investment 0, payback not shown, no NaN", () => {
+  const f = load();
+  f.opportunities.forEach((o) => { o.hidden = true; });
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.investment.squadCost, 0);
+  assert.equal(m.investment.paybackMonths, null);
+  assert.equal(m.totals.monthlySavings, 0);
+  assert.ok(!/NaN|Infinity|undefined/.test(renderI(f)));
+});
+
+test("a wave whose opportunities have 0 weeks costs nothing and allocates nothing", () => {
+  const f = load();
+  f.opportunities[0]!.suggestedSquad.weeks = 0;
+  const m = buildReportModel(f.engagement, f.maps, f.opportunities, NOW, f.initiatives);
+  assert.equal(m.squadByWave[0]!.cost, 0);
+  assert.equal(m.opportunities[0]!.investment, 0);
+  assert.equal(m.opportunities[0]!.paybackMonths, 0);
+  assert.ok(!/NaN|Infinity|undefined/.test(renderI(f)));
+});

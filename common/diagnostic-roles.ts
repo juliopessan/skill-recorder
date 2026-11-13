@@ -14,6 +14,17 @@ export function distinctRoles(roles: string[], into: Map<string, string> = new M
   return into;
 }
 
+/** One rate per role (case-insensitive, trimmed): the first entry wins, later duplicates are dropped. */
+export function dedupeSquadRates<T extends { role: string }>(rates: T[]): T[] {
+  const seen = new Set<string>();
+  return rates.filter((r) => {
+    const k = roleKey(r.role);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Distinct roles (case-insensitive, trimmed, first spelling kept) per wave among visible opportunities. */
 export function squadByWave(opps: Opportunity[]): { wave: 1 | 2 | 3; roles: string[] }[] {
   return ([1, 2, 3] as const).map((wave) => {

@@ -12,6 +12,8 @@ import {
   parseNonNegative,
   NEGATIVE_RESULT_WARNING,
   PAYBACK_WARNING,
+  RATE_MAX_ERROR,
+  validateOptionalRate,
   SAVE_FAILED_MESSAGE,
   setOpportunityHidden,
   setSquadRate,
@@ -287,4 +289,12 @@ test("squadReturnWarning only fires on payback above 36 months or a negative res
   assert.equal(squadReturnWarning({ paybackOverCap: false, netOver36Months: -1 }), NEGATIVE_RESULT_WARNING);
   assert.equal(squadReturnWarning({ paybackOverCap: false, netOver36Months: 0 }), null);
   assert.equal(squadReturnWarning({ paybackOverCap: false, netOver36Months: null }), null);
+});
+
+test("validateOptionalRate accepts blank, zero and the maximum; rejects negatives, text and values above the bound", () => {
+  for (const ok of ["", "  ", "0", "4000", "1500,50", "1000000"]) assert.equal(validateOptionalRate(ok), null, ok);
+  assert.equal(validateOptionalRate("-1"), "Informe um número maior ou igual a zero.");
+  assert.equal(validateOptionalRate("abc"), "Informe um número maior ou igual a zero.");
+  assert.equal(validateOptionalRate("1000001"), RATE_MAX_ERROR);
+  assert.match(RATE_MAX_ERROR, /1\.000\.000/);
 });

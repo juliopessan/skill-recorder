@@ -9,6 +9,7 @@ import type {
   SourcedNumber,
   SquadRate,
 } from "../common/diagnostic";
+import { MAX_RATE } from "../common/diagnostic-config";
 import { roleKey, squadByWave } from "../common/diagnostic-roles";
 import type { ReportInvestment } from "../common/diagnostic-report";
 
@@ -164,6 +165,17 @@ export function squadReturnWarning(inv: Pick<ReportInvestment, "paybackOverCap" 
   if (inv.netOver36Months !== null && inv.netOver36Months < 0) return NEGATIVE_RESULT_WARNING;
   return null;
 }
+
+export const NUMBER_ERROR = "Informe um número maior ou igual a zero.";
+export const RATE_MAX_ERROR = `Informe um valor de até ${MAX_RATE.toLocaleString("pt-BR")}.`;
+
+/** Rate input: a blank field is valid (it means "not informed"); otherwise a number from 0 to MAX_RATE. */
+export const validateOptionalRate = (text: string): string | null => {
+  if (text.trim() === "") return null;
+  const n = parseNonNegative(text);
+  if (n === null) return NUMBER_ERROR;
+  return n > MAX_RATE ? RATE_MAX_ERROR : null;
+};
 
 export const SAVE_FAILED_MESSAGE = "Não foi possível salvar as alterações. Tente novamente.";
 

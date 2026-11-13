@@ -294,3 +294,26 @@ test("programReturn: delivery months, 36-month cap and net result", () => {
   assert.equal(none.paybackMonths, null);
   assert.equal(none.netOver36Months, -1000);
 });
+
+test("a duplicated role (case/trim variants) uses the first rate", () => {
+  const opps = [sq("a", 1, ["Dev"], 2)];
+  assert.equal(waveInvestments(opps, [rate("Dev", 100), rate(" dev", 900)])[0]!.cost, 200);
+});
+
+test("a non-finite computed cost is null, never Infinity", () => {
+  const opps = [sq("a", 1, ["Dev"], 2)];
+  const w = waveInvestments(opps, [rate("Dev", 1e308)]);
+  assert.equal(w[0]!.cost, null);
+  assert.equal(programInvestment(opps, [rate("Dev", 1e308)]).total, null);
+  assert.equal(opportunityInvestments(opps, [rate("Dev", 1e308)]).get("a"), null);
+});
+
+test("no visible opportunity: zero investment, no payback, no NaN", () => {
+  const p = programInvestment([sq("h", 1, ["Dev"], 3, { hidden: true })], []);
+  assert.equal(p.total, 0);
+  assert.equal(p.squadCost, 0);
+  const r = programReturn(p.total, 0, 0);
+  assert.equal(r.paybackMonths, null);
+  assert.equal(r.netOver36Months, 0);
+  assert.equal(r.deliveryMonths, 0);
+});

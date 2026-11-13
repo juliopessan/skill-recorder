@@ -1,7 +1,9 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import type { QuestionnaireAxis, Source } from "../../common/diagnostic";
-import { parseNonNegative } from "../diagnostic-view-state";
+import { NUMBER_ERROR, parseNonNegative } from "../diagnostic-view-state";
+
+export { NUMBER_ERROR, RATE_MAX_ERROR, validateOptionalRate } from "../diagnostic-view-state";
 
 export function isError<T>(result: T | { error: string }): result is { error: string } {
   return typeof result === "object" && result !== null && "error" in result && typeof (result as { error: unknown }).error === "string";
@@ -19,12 +21,7 @@ export async function safeCall<T>(call: () => Promise<T | { error: string }>): P
   }
 }
 
-export const NUMBER_ERROR = "Informe um número maior ou igual a zero.";
 export const validateNonNegative = (text: string): string | null => (parseNonNegative(text) === null ? NUMBER_ERROR : null);
-
-/** Like validateNonNegative, but a blank field is valid (it means "not informed"). */
-export const validateOptionalNonNegative = (text: string): string | null =>
-  text.trim() === "" ? null : validateNonNegative(text);
 
 export interface GenerationState {
   /** What is running, or null when idle. */

@@ -14,7 +14,7 @@ import type {
 
 const MS_PER_HOUR = 3_600_000;
 
-const money = (n: number): number => Math.round(n * 100) / 100;
+export const money = (n: number): number => Math.round(n * 100) / 100;
 const score = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 const ratio = (count: number, total: number): number => (total === 0 ? 0 : count / total);
 
@@ -192,7 +192,8 @@ export function waveInvestments(opps: Opportunity[], rates: SquadRate[]): WaveIn
   return squadByWave(opps).map(({ wave, roles }) => {
     const weeks = visibleInWave(opps, wave).reduce((a, o) => a + safeWeeks(o), 0);
     const weekly = roles.map((r) => have.get(roleKey(r)));
-    const cost = weekly.some((w) => w === undefined) ? null : money((weekly as number[]).reduce((a, w) => a + w * weeks, 0));
+    const raw = weekly.some((w) => w === undefined) ? null : (weekly as number[]).reduce((a, w) => a + w * weeks, 0);
+    const cost = raw === null || !Number.isFinite(raw) ? null : money(raw);
     return { wave, roles, weeks, cost };
   });
 }
@@ -247,7 +248,14 @@ export function programInvestment(
     enablementDayRate !== undefined && Number.isFinite(enablementDayRate)
       ? money(enablement.filter((x) => !x.hidden).reduce((a, x) => a + x.durationDays * enablementDayRate, 0))
       : 0;
-  return { waves, missingRoles, squadCost, enablementCost, total: squadCost === null ? null : money(squadCost + enablementCost) };
+  const total = squadCost === null ? null : money(squadCost + enablementCost);
+  return {
+    waves,
+    missingRoles,
+    squadCost,
+    enablementCost: Number.isFinite(enablementCost) ? enablementCost : 0,
+    total: total !== null && Number.isFinite(total) && Number.isFinite(enablementCost) ? total : null,
+  };
 }
 
 /** Simple payback in months (investment ÷ monthly savings); null without an investment or without savings. */
